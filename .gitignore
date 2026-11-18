@@ -1,5 +1,4 @@
 # build outputs
 /bin/
-/web/main.wasm
 *.test
 *.out

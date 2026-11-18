@@ -2,15 +2,16 @@
 #
 #   make            tests + CLI + WebAssembly
 #   make cli        bin/morse-dsp
-#   make wasm       web/main.wasm (+ wasm_exec.js matching your Go toolchain)
+#   make wasm       docs/main.wasm (+ wasm_exec.js matching your Go toolchain)
+#                   GitHub Pages serves docs/ from main, so commit both after a rebuild
 #   make test       go test -v ./...
-#   make serve      build wasm and serve web/ on http://localhost:8080
+#   make serve      build wasm and serve docs/ on http://localhost:8080
 
 GO        ?= go
 PORT      ?= 8080
 BIN_DIR   := bin
 CLI       := $(BIN_DIR)/morse-dsp
-WEB_DIR   := web
+WEB_DIR   := docs
 WASM      := $(WEB_DIR)/main.wasm
 GOROOT    := $(shell $(GO) env GOROOT)
 # Go >= 1.24 ships wasm_exec.js in lib/wasm, older releases in misc/wasm.
@@ -26,8 +27,10 @@ build: cli wasm
 cli:
 	$(GO) build -trimpath -o $(CLI) ./cmd/morse-dsp
 
+# -trimpath and -buildvcs=false make the build reproducible: CI rebuilds it and
+# fails if the committed docs/main.wasm differs.
 wasm: wasm-exec
-	GOOS=js GOARCH=wasm $(GO) build -trimpath -ldflags="-s -w" -o $(WASM) ./cmd/wasm
+	GOOS=js GOARCH=wasm $(GO) build -trimpath -buildvcs=false -ldflags="-s -w" -o $(WASM) ./cmd/wasm
 	@ls -lh $(WASM) | awk '{print "built " $$9 " (" $$5 ")"}'
 
 wasm-exec:
@@ -62,8 +65,9 @@ serve: wasm
 	@echo "serving $(WEB_DIR)/ on http://localhost:$(PORT)"
 	python3 -m http.server $(PORT) --bind 127.0.0.1 --directory $(WEB_DIR)
 
+# docs/main.wasm is committed (it is the published site), so clean leaves it alone.
 clean:
-	rm -rf $(BIN_DIR) $(WASM)
+	rm -rf $(BIN_DIR)
 
 help:
-	@sed -n '1,9p' Makefile
+	@sed -n '1,8p' Makefile

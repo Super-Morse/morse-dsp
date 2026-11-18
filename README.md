@@ -181,14 +181,14 @@ cd morse-dsp
 
 ### 2. Build the CLI and the WebAssembly binary
 ```bash
-make            # tests + bin/morse-dsp + web/main.wasm
+make            # tests + bin/morse-dsp + docs/main.wasm
 make cli        # bin/morse-dsp only
-make wasm       # web/main.wasm + the wasm_exec.js matching your Go toolchain
+make wasm       # docs/main.wasm + the wasm_exec.js matching your Go toolchain
 ```
 
 ### 3. Launch the local web console
 ```bash
-make serve      # http://localhost:8080
+make serve      # serves docs/ on http://localhost:8080
 ```
 
 The page must be served over HTTP: browsers refuse to load WebAssembly from `file://`.
@@ -258,7 +258,7 @@ Exit codes: `0` success, `1` processing error, `2` invalid arguments.
 - **DSP settings:** language, speed (10–40 WPM), tone (400–1000 Hz), automatic tone search.
 - **Output:** *Text* (plain text + Morse with copy buttons and a dot/dash tape) and *Audio* (player + `.wav` download; for audio input a clean signal re-keyed from the decoder's timeline). At least one output is always on — unchecking the last one switches the other on — and a disabled output is not computed in WASM at all.
 
-`.github/workflows/pages.yml` runs the tests, builds `web/main.wasm` and publishes `web/` on every push to `main`. Enable it once under **Settings → Pages → Source: GitHub Actions**.
+The site is the `docs/` folder, served by GitHub Pages straight from the `main` branch (**Settings → Pages → Deploy from a branch → `main` / `/docs`**). Because there is no build step on the Pages side, the compiled `docs/main.wasm` and its `wasm_exec.js` are committed: after changing Go code, run `make wasm` and commit both files. The build is reproducible (`-trimpath -buildvcs=false`), and the `wasm.yml` workflow rebuilds it on every push and fails if the committed binary is stale. `docs/.nojekyll` turns off Jekyll processing, and `docs/assets/` holds the README screenshots.
 
 ```js
 MorseDSP.detect(input)                                     // "text" | "morse" | "empty"

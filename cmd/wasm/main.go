@@ -12,7 +12,7 @@
 // opts: {lang: "en"|"ru"|"ua", wpm, freq, rate, autoFreq, snr, seed}.
 // Every call returns {ok: true, ...} or {ok: false, error}.
 //
-// Build: GOOS=js GOARCH=wasm go build -o web/main.wasm ./cmd/wasm
+// Build: make wasm (GOOS=js GOARCH=wasm go build -trimpath -buildvcs=false -ldflags="-s -w" -o docs/main.wasm ./cmd/wasm)
 package main
 
 import (

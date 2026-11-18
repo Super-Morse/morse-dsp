@@ -1,0 +1,38 @@
+# GitHub Pages serves docs/ straight from the main branch, so the compiled
+# docs/main.wasm (and the matching wasm_exec.js) are committed. This job rebuilds
+# them and fails if the committed copies are stale.
+# Fix: run `make wasm` and commit docs/main.wasm docs/wasm_exec.js.
+name: WebAssembly bundle
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: docs/main.wasm is up to date
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.8'  # keep in sync with the toolchain that built docs/main.wasm
+
+      - name: Rebuild WebAssembly
+        run: make wasm
+
+      - name: Compare with the committed build
+        run: |
+          if ! git diff --quiet -- docs/; then
+            git diff --stat -- docs/
+            echo "::error::docs/main.wasm is stale: run 'make wasm' and commit docs/main.wasm docs/wasm_exec.js"
+            exit 1
+          fi
