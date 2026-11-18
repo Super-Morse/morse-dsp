@@ -76,17 +76,17 @@
 
   function updateReadouts() {
     el.wpmOut.innerHTML = `<b>${state.wpm}</b> WPM`;
-    el.freqOut.innerHTML = `<b>${state.freq}</b> Гц`;
-    el.snrOut.textContent = `${state.snr} дБ`;
+    el.freqOut.innerHTML = `<b>${state.freq}</b> Hz`;
+    el.snrOut.textContent = `${state.snr} dB`;
     [el.wpmIn, el.freqIn, el.snrIn].forEach(setFill);
     const dot = 1200 / state.wpm;
-    el.mDot.textContent = `${Math.round(dot)} мс`;
-    el.mDash.textContent = `${Math.round(dot * 3)} мс`;
+    el.mDot.textContent = `${Math.round(dot)} ms`;
+    el.mDash.textContent = `${Math.round(dot * 3)} ms`;
   }
 
   function updateEstimate(r) {
     el.mWpm.textContent = r && r.text ? r.wpm.toFixed(1) : '—';
-    el.mTone.textContent = r && r.freq ? `${Math.round(r.freq)} Гц` : '—';
+    el.mTone.textContent = r && r.freq ? `${Math.round(r.freq)} Hz` : '—';
   }
 
   function updateBlocks() {
@@ -102,8 +102,8 @@
 
   async function boot() {
     if (location.protocol === 'file:') {
-      setStatus('error', 'нужен HTTP-сервер');
-      notice('error', 'Браузер не загружает WebAssembly с file://. Запустите «make serve» и откройте http://localhost:8080.');
+      setStatus('error', 'needs an HTTP server');
+      notice('error', 'Browsers do not load WebAssembly from file://. Run "make serve" and open http://localhost:8080.');
       return;
     }
     try {
@@ -122,11 +122,11 @@
       await ready;
       state.ready = true;
       el.genBtn.disabled = false;
-      setStatus('ready', `WASM ${window.MorseDSP.version} · онлайн`);
+      setStatus('ready', `WASM ${window.MorseDSP.version} · online`);
       run();
     } catch (err) {
-      setStatus('error', 'WASM не загружен');
-      notice('error', `Не удалось загрузить main.wasm (${err.message}). Соберите его: make wasm.`);
+      setStatus('error', 'WASM failed to load');
+      notice('error', `Could not load main.wasm (${err.message}). Build it with: make wasm.`);
     }
   }
 
@@ -176,7 +176,7 @@
     (r.warnings || []).forEach((w) => notice('warn', w));
     const slug = (r.text || input).trim().slice(0, 24).replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || 'morse';
     render(r, {
-      label: r.kind === 'morse' ? 'Сигнал по введённому коду' : 'Сгенерированный сигнал',
+      label: r.kind === 'morse' ? 'Signal for the entered code' : 'Generated signal',
       filename: `morse-${slug}-${state.wpm}wpm.wav`,
     });
   }
@@ -187,7 +187,7 @@
     const a = state.audioIn;
     if (!a) {
       renderEmpty();
-      notice('info', 'Загрузите .wav или нажмите «Сгенерировать тестовый шумный сигнал».');
+      notice('info', 'Upload a .wav or press "Generate noisy test signal".');
       return;
     }
     const t0 = performance.now();
@@ -195,16 +195,16 @@
     const ms = performance.now() - t0;
     if (!r.ok) {
       renderEmpty();
-      notice('error', `Не удалось обработать файл: ${r.error}`);
+      notice('error', `Could not process the file: ${r.error}`);
       el.audioInMeta.textContent = '';
       return;
     }
-    el.audioInMeta.textContent = `${r.duration.toFixed(2)} с · ${(r.sampleRate / 1000).toFixed(r.sampleRate % 1000 ? 2 : 0)} кГц · DSP ${ms < 1 ? '<1' : ms.toFixed(0)} мс`;
+    el.audioInMeta.textContent = `${r.duration.toFixed(2)} s · ${(r.sampleRate / 1000).toFixed(r.sampleRate % 1000 ? 2 : 0)} kHz · DSP ${ms < 1 ? '<1' : ms.toFixed(0)} ms`;
     updateEstimate(r);
     if (!r.morse && state.outText) {
       notice('warn', state.autoFreq
-        ? 'Тон не найден: возможно, сигнал слишком слабый или это не CW.'
-        : `На ${state.freq} Гц сигнал не найден. Подстройте частоту или включите «Авто-поиск тона».`);
+        ? 'No tone found: the signal may be too weak, or it is not CW.'
+        : `No signal at ${state.freq} Hz. Adjust the tone or turn on "Auto-detect the tone".`);
     }
     if (a.reference && state.outText) {
       el.compareLine.hidden = false;
@@ -212,11 +212,11 @@
       el.compareLine.innerHTML = '';
       const mark = document.createElement('span');
       mark.className = same ? 'ok' : 'bad';
-      mark.textContent = same ? '✓ совпадает с эталоном' : '✗ отличается от эталона';
-      el.compareLine.append(mark, document.createTextNode(` · эталон: ${a.reference}`));
+      mark.textContent = same ? '✓ matches the reference' : '✗ differs from the reference';
+      el.compareLine.append(mark, document.createTextNode(` · reference: ${a.reference}`));
     }
     render(r, {
-      label: 'Очищенный сигнал (тон по ключу декодера)',
+      label: 'Clean signal (tone keyed by the decoder)',
       filename: a.name.replace(/\.wav$/i, '') + '-clean.wav',
     });
   }
@@ -244,9 +244,9 @@
   function showDetect(kind) {
     el.detectBadge.dataset.kind = kind;
     el.detectText.textContent = {
-      text: 'распознан текст → морзе',
-      morse: 'распознан код морзе → текст',
-      empty: 'ожидание ввода',
+      text: 'text detected → Morse',
+      morse: 'Morse detected → text',
+      empty: 'waiting for input',
     }[kind] || kind;
   }
 
@@ -271,7 +271,7 @@
     el.downloadBtn.href = state.urls.out;
     el.downloadBtn.download = filename;
     el.downloadBtn.setAttribute('aria-disabled', 'false');
-    el.audioMeta.textContent = `${duration.toFixed(2)} с · WAV 16 бит · ${(wav.length / 1024).toFixed(0)} КБ`;
+    el.audioMeta.textContent = `${duration.toFixed(2)} s · 16-bit WAV · ${(wav.length / 1024).toFixed(0)} KB`;
   }
 
   function clearOutAudio() {
@@ -297,11 +297,26 @@
     run();
   }
 
+  // Cuts text to at most max characters, ending at a word boundary.
+  function truncateAtWord(text, max) {
+    if (text.length <= max) return text;
+    const cut = text.slice(0, max);
+    const space = Math.max(cut.lastIndexOf(' '), cut.lastIndexOf('\n'), cut.lastIndexOf('\t'));
+    return (space > 0 ? cut.slice(0, space) : cut).trimEnd();
+  }
+
+  function openFile(file) {
+    loadFile(file).catch((err) => {
+      clearNotices();
+      notice('error', `Could not read the file: ${err.message}`);
+    });
+  }
+
   async function loadFile(file) {
     if (!file) return;
     if (file.size > 64 * 1024 * 1024) {
       clearNotices();
-      notice('error', 'Файл больше 64 МБ — обрежьте запись.');
+      notice('error', 'The file is larger than 64 MB. Trim the recording and try again.');
       return;
     }
     const bytes = new Uint8Array(await file.arrayBuffer());
@@ -312,7 +327,7 @@
     if (!state.ready) return;
     let phrase = el.textIn.value.trim();
     if (window.MorseDSP.detect(phrase) === 'empty') phrase = DEFAULT_PHRASE[state.lang];
-    if (phrase.length > 160) phrase = phrase.slice(0, 160).replace(/\s+\S*$/, '');
+    if (phrase.length > 160) phrase = truncateAtWord(phrase, 160);
     const seed = Math.floor(Math.random() * 2 ** 31);
     const r = window.MorseDSP.generateTestSignal(phrase, { wpm: state.wpm, freq: state.freq, snr: state.snr, seed, rate: SAMPLE_RATE });
     if (!r.ok) {
@@ -365,7 +380,8 @@
     const pad = 10;
     const rowH = 16;
     const maxUnits = Math.max(20, Math.floor((width - 2 * pad) / unit));
-    const words = code.split(/\s*[/\n]\s*/).filter(Boolean);
+    // canonical Morse from the core: words are joined by " / ", lines by "\n"
+    const words = code.split('\n').flatMap((line) => line.split(' / ')).map((w) => w.trim()).filter(Boolean);
 
     const rows = [[]];
     let x = 0;
@@ -412,7 +428,7 @@
       g.shadowBlur = 0;
       g.fillStyle = '#56665e';
       g.font = '11px "JetBrains Mono", monospace';
-      g.fillText(`… ещё ${rows.length - shown.length} строк`, width - 120, height - 4);
+      g.fillText(`… ${rows.length - shown.length} more lines`, width - 120, height - 4);
     }
   }
 
@@ -441,7 +457,7 @@
       t.classList.remove('flash');
       void t.offsetWidth;
       t.classList.add('flash');
-      el.toggleHint.textContent = `Хотя бы один вывод всегда включён — включён «${other === el.outText ? 'Текст' : 'Звук'}»`;
+      el.toggleHint.textContent = `At least one output stays on, so "${other === el.outText ? 'Text' : 'Audio'}" was switched on`;
       clearTimeout(hintTimer);
       hintTimer = setTimeout(() => { el.toggleHint.textContent = ''; }, 2600);
     }
@@ -494,9 +510,9 @@
       document.execCommand('copy');
       ta.remove();
     }
-    btn.textContent = 'Скопировано ✓';
+    btn.textContent = 'Copied ✓';
     btn.classList.add('done');
-    setTimeout(() => { btn.textContent = 'Копировать'; btn.classList.remove('done'); }, 1400);
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('done'); }, 1400);
   }
 
   // ---------------------------------------------------------------- events
@@ -528,7 +544,7 @@
       setTab('text');
     }));
 
-    el.fileIn.addEventListener('change', () => loadFile(el.fileIn.files[0]));
+    el.fileIn.addEventListener('change', () => openFile(el.fileIn.files[0]));
     ['dragenter', 'dragover'].forEach((ev) => el.dropzone.addEventListener(ev, (e) => {
       e.preventDefault();
       el.dropzone.classList.add('drag');
@@ -536,7 +552,7 @@
     ['dragleave', 'drop'].forEach((ev) => el.dropzone.addEventListener(ev, () => el.dropzone.classList.remove('drag')));
     el.dropzone.addEventListener('drop', (e) => {
       e.preventDefault();
-      loadFile(e.dataTransfer.files[0]);
+      openFile(e.dataTransfer.files[0]);
     });
     el.genBtn.disabled = true;
     el.genBtn.addEventListener('click', generateTest);
@@ -569,5 +585,8 @@
   syncControls();
   wire();
   showDetect('empty');
-  boot();
+  boot().catch((err) => {
+    setStatus('error', 'WASM failed to load');
+    notice('error', `Could not start: ${err.message}`);
+  });
 })();

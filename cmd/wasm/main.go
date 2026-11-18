@@ -175,7 +175,7 @@ func fromMorse(input string, needText bool, lang morse.Language) (conversion, er
 	c.text, err = morse.DecodeText(input, lang)
 	var uk *morse.UnknownCodesError
 	if errors.As(err, &uk) {
-		c.warnings = append(c.warnings, "Неизвестные коды заменены на «*»: "+strings.Join(uk.Codes, " "))
+		c.warnings = append(c.warnings, "Unknown codes were replaced with *: "+strings.Join(uk.Codes, " "))
 		err = nil
 	}
 	return c, err
@@ -189,7 +189,7 @@ func fromText(input string, lang morse.Language) (conversion, error) {
 	c.code, err = morse.EncodeText(input, lang)
 	var uc *morse.UnknownCharsError
 	if errors.As(err, &uc) {
-		c.warnings = append(c.warnings, "Пропущены символы без кода Морзе: "+joinRunes(uc.Chars))
+		c.warnings = append(c.warnings, "Skipped characters without a Morse code: "+joinRunes(uc.Chars))
 		err = nil
 	}
 	return c, err
@@ -241,7 +241,7 @@ func processAudio(args []js.Value) (result, error) {
 	cfg.AutoFrequency = o.autoFreq
 	cfg.Language = o.lang
 	if cfg.Frequency >= float64(rate)/2 {
-		return nil, errors.New("частота тона выше половины частоты дискретизации файла")
+		return nil, errors.New("the tone frequency is above half the sample rate of the file")
 	}
 	r, err := morse.DecodeSamples(samples, cfg)
 	if err != nil {
@@ -296,7 +296,7 @@ func generateTestSignal(args []js.Value) (result, error) {
 		return nil, err
 	}
 	if code == "" {
-		return nil, errors.New("нет символов для передачи")
+		return nil, errors.New("nothing to transmit: the text has no characters with a Morse code")
 	}
 	res := result{"morse": code, "snr": o.snr}
 	if err := synthesizeInto(res, code, o, 0.6, true); err != nil {

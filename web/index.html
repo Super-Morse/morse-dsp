@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>morse-dsp · CW-консоль</title>
-  <meta name="description" content="Кодировщик и потоковый DSP-декодер азбуки Морзе на Go + WebAssembly: текст ⇄ код Морзе ⇄ звук.">
+  <title>morse-dsp · CW console</title>
+  <meta name="description" content="Morse code (CW) encoder and streaming DSP decoder in Go and WebAssembly: text ⇄ Morse ⇄ audio, in English, Russian and Ukrainian.">
   <meta name="theme-color" content="#0b0f0e">
   <meta name="color-scheme" content="dark">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f1513'/%3E%3Ccircle cx='8' cy='16' r='3' fill='%23ffb547'/%3E%3Crect x='14' y='13' width='12' height='6' rx='3' fill='%23ffb547'/%3E%3C/svg%3E">
@@ -20,12 +20,12 @@
         <span class="lamp" id="brandLamp" aria-hidden="true"></span>
         <div>
           <h1>MORSE<span class="dot">·</span>DSP</h1>
-          <p class="brand-sub">CW-кодер · декодер Гёрцеля · WebAssembly</p>
+          <p class="brand-sub">CW encoder · Goertzel decoder · WebAssembly</p>
         </div>
       </div>
       <div class="status" id="wasmStatus" data-state="loading" role="status">
         <span class="status-led" aria-hidden="true"></span>
-        <span class="status-text">WASM: загрузка…</span>
+        <span class="status-text">WASM: loading…</span>
       </div>
     </header>
 
@@ -33,24 +33,24 @@
       <!-- ============ INPUT ============ -->
       <section class="panel panel-input" aria-labelledby="inTitle">
         <div class="panel-head">
-          <h2 id="inTitle"><span class="ch">CH1</span>Вход</h2>
-          <div class="tabs" role="tablist" aria-label="Источник">
-            <button type="button" role="tab" id="tabText" aria-controls="paneText" aria-selected="true">Текст</button>
-            <button type="button" role="tab" id="tabAudio" aria-controls="paneAudio" aria-selected="false" tabindex="-1">Аудио</button>
+          <h2 id="inTitle"><span class="ch">CH1</span>Input</h2>
+          <div class="tabs" role="tablist" aria-label="Source">
+            <button type="button" role="tab" id="tabText" aria-controls="paneText" aria-selected="true">Text</button>
+            <button type="button" role="tab" id="tabAudio" aria-controls="paneAudio" aria-selected="false" tabindex="-1">Audio</button>
           </div>
         </div>
 
         <div class="pane" id="paneText" role="tabpanel" aria-labelledby="tabText">
           <div class="textarea-wrap">
             <textarea id="textIn" spellcheck="false" autocomplete="off" maxlength="1000"
-              aria-label="Текст или код Морзе"
-              placeholder="Введите текст (HELLO) или код Морзе (.... . .-.. .-.. ---)"></textarea>
-            <button type="button" class="icon-btn clear-btn" id="clearBtn" title="Очистить" aria-label="Очистить поле">✕</button>
+              aria-label="Text or Morse code"
+              placeholder="Type text (HELLO) or Morse code (.... . .-.. .-.. ---)"></textarea>
+            <button type="button" class="icon-btn clear-btn" id="clearBtn" title="Clear" aria-label="Clear the field">✕</button>
           </div>
           <div class="pane-foot">
-            <span class="detect" id="detectBadge" data-kind="empty"><span class="detect-led" aria-hidden="true"></span><span id="detectText">ожидание ввода</span></span>
+            <span class="detect" id="detectBadge" data-kind="empty"><span class="detect-led" aria-hidden="true"></span><span id="detectText">waiting for input</span></span>
             <div class="examples">
-              <span class="examples-label">примеры</span>
+              <span class="examples-label">examples</span>
               <button type="button" class="chip" data-example="CQ CQ DE MORSE DSP K">CQ</button>
               <button type="button" class="chip" data-example="... --- ...">SOS</button>
               <button type="button" class="chip" data-example=".... . .-.. .-.. --- / .-- --- .-. .-.. -..">.... .</button>
@@ -64,21 +64,21 @@
           <label class="dropzone" id="dropzone">
             <input type="file" id="fileIn" accept=".wav,audio/wav,audio/x-wav,audio/wave">
             <span class="dz-icon" aria-hidden="true">⇪</span>
-            <span class="dz-main">Перетащите .wav сюда или <u>выберите файл</u></span>
-            <span class="dz-sub">PCM 8/16/24/32 бит или float · моно/стерео · любая частота дискретизации</span>
+            <span class="dz-main">Drop a .wav here or <u>choose a file</u></span>
+            <span class="dz-sub">PCM 8/16/24/32-bit or float · mono or stereo · any sample rate</span>
           </label>
 
           <div class="testgen">
             <button type="button" class="btn btn-accent" id="genBtn">
-              <span aria-hidden="true">⚡</span> Сгенерировать тестовый шумный сигнал
+              <span aria-hidden="true">⚡</span> Generate noisy test signal
             </button>
             <label class="snr" for="snrIn">
               <span class="snr-label">SNR</span>
               <input type="range" id="snrIn" min="-5" max="30" step="1" value="10">
-              <output id="snrOut" for="snrIn">10 дБ</output>
+              <output id="snrOut" for="snrIn">10 dB</output>
             </label>
           </div>
-          <p class="hint" id="genHint">Фраза берётся из вкладки «Текст» (или стандартная), скорость и тон — из настроек DSP.</p>
+          <p class="hint" id="genHint">Uses the phrase from the Text tab (or a default one) with the speed and tone from the DSP settings.</p>
 
           <div class="audio-in" id="audioInBox" hidden>
             <div class="audio-in-head">
@@ -86,7 +86,7 @@
               <span class="meta" id="audioInMeta"></span>
             </div>
             <div class="player-row">
-              <span class="keylamp" id="inLamp" title="Ключ" aria-hidden="true"></span>
+              <span class="keylamp" id="inLamp" title="Key" aria-hidden="true"></span>
               <audio id="audioInPlayer" controls preload="metadata"></audio>
             </div>
             <div class="compare" id="compareLine" hidden></div>
@@ -97,11 +97,11 @@
       <!-- ============ SETTINGS ============ -->
       <aside class="panel panel-settings" aria-labelledby="dspTitle">
         <div class="panel-head">
-          <h2 id="dspTitle"><span class="ch">DSP</span>Настройки</h2>
+          <h2 id="dspTitle"><span class="ch">DSP</span>Settings</h2>
         </div>
 
         <div class="field field-lang">
-          <span class="label" id="langLabel">Язык</span>
+          <span class="label" id="langLabel">Language</span>
           <div class="seg" role="radiogroup" aria-labelledby="langLabel">
             <button type="button" role="radio" data-lang="en" aria-checked="true">EN</button>
             <button type="button" role="radio" data-lang="ru" aria-checked="false">RU</button>
@@ -111,7 +111,7 @@
 
         <div class="field field-wpm">
           <div class="field-head">
-            <label class="label" for="wpmIn">Скорость</label>
+            <label class="label" for="wpmIn">Speed</label>
             <output class="readout" id="wpmOut" for="wpmIn"><b>20</b> WPM</output>
           </div>
           <input type="range" id="wpmIn" min="10" max="40" step="1" value="20">
@@ -120,39 +120,39 @@
 
         <div class="field field-freq">
           <div class="field-head">
-            <label class="label" for="freqIn">Частота тона</label>
-            <output class="readout" id="freqOut" for="freqIn"><b>700</b> Гц</output>
+            <label class="label" for="freqIn">Tone</label>
+            <output class="readout" id="freqOut" for="freqIn"><b>700</b> Hz</output>
           </div>
           <input type="range" id="freqIn" min="400" max="1000" step="10" value="700">
           <div class="scale" aria-hidden="true"><span>400</span><span>600</span><span>800</span><span>1000</span></div>
           <label class="check">
             <input type="checkbox" id="autoFreqIn">
             <span class="check-box" aria-hidden="true"></span>
-            <span>Авто-поиск тона при декодировании аудио</span>
+            <span>Auto-detect the tone when decoding audio</span>
           </label>
         </div>
 
         <dl class="meter" id="meter">
-          <div><dt>Точка</dt><dd id="mDot">60 мс</dd></div>
-          <div><dt>Тире</dt><dd id="mDash">180 мс</dd></div>
-          <div><dt>Оценка WPM</dt><dd id="mWpm">—</dd></div>
-          <div><dt>Тон</dt><dd id="mTone">—</dd></div>
+          <div><dt>Dot</dt><dd id="mDot">60 ms</dd></div>
+          <div><dt>Dash</dt><dd id="mDash">180 ms</dd></div>
+          <div><dt>Measured WPM</dt><dd id="mWpm">—</dd></div>
+          <div><dt>Tone</dt><dd id="mTone">—</dd></div>
         </dl>
-        <p class="hint">Для декодера WPM — лишь стартовая оценка: скорость подстраивается автоматически.</p>
+        <p class="hint">For the decoder, WPM is only a starting guess: it follows the real speed automatically.</p>
       </aside>
 
       <!-- ============ OUTPUT ============ -->
       <section class="panel panel-output" aria-labelledby="outTitle">
         <div class="panel-head">
-          <h2 id="outTitle"><span class="ch">CH2</span>Вывод</h2>
-          <div class="toggles" role="group" aria-label="Что выводить">
+          <h2 id="outTitle"><span class="ch">CH2</span>Output</h2>
+          <div class="toggles" role="group" aria-label="What to output">
             <label class="toggle" id="toggleText">
               <input type="checkbox" id="outText" checked>
-              <span class="toggle-led" aria-hidden="true"></span>Текст
+              <span class="toggle-led" aria-hidden="true"></span>Text
             </label>
             <label class="toggle" id="toggleAudio">
               <input type="checkbox" id="outAudio" checked>
-              <span class="toggle-led" aria-hidden="true"></span>Звук
+              <span class="toggle-led" aria-hidden="true"></span>Audio
             </label>
           </div>
         </div>
@@ -163,39 +163,39 @@
         <div class="out-block" id="textBlock">
           <div class="lcd-field">
             <div class="lcd-head">
-              <span class="lcd-title">Текст</span>
-              <button type="button" class="copy" data-copy="plainOut">Копировать</button>
+              <span class="lcd-title">Text</span>
+              <button type="button" class="copy" data-copy="plainOut">Copy</button>
             </div>
             <div class="lcd lcd-text" id="plainOut" data-placeholder="—"></div>
           </div>
           <div class="lcd-field">
             <div class="lcd-head">
-              <span class="lcd-title">Код Морзе</span>
-              <button type="button" class="copy" data-copy="morseOut">Копировать</button>
+              <span class="lcd-title">Morse code</span>
+              <button type="button" class="copy" data-copy="morseOut">Copy</button>
             </div>
             <div class="lcd lcd-morse" id="morseOut" data-placeholder="—"></div>
           </div>
-          <canvas class="tape" id="tape" hidden aria-label="Лента: точки и тире" role="img"></canvas>
+          <canvas class="tape" id="tape" hidden aria-hidden="true"></canvas>
         </div>
 
         <div class="out-block" id="audioBlock">
           <div class="lcd-head">
-            <span class="lcd-title" id="audioLabel">Сигнал</span>
+            <span class="lcd-title" id="audioLabel">Signal</span>
             <span class="meta" id="audioMeta"></span>
           </div>
           <div class="player-row">
-            <span class="keylamp" id="outLamp" title="Ключ" aria-hidden="true"></span>
+            <span class="keylamp" id="outLamp" title="Key" aria-hidden="true"></span>
             <audio id="audioOut" controls preload="auto"></audio>
-            <a class="btn" id="downloadBtn" download="morse.wav" aria-disabled="true">⬇ Скачать .wav</a>
+            <a class="btn" id="downloadBtn" download="morse.wav" aria-disabled="true">⬇ Download .wav</a>
           </div>
         </div>
       </section>
     </main>
 
     <footer class="foot">
-      <span>Тот же DSP-декодер в терминале:</span>
+      <span>The same DSP decoder in your terminal:</span>
       <code><span>python sdr.py |</span> <span>morse-dsp decode --in-format pcm</span></code>
-      <a href="https://github.com/Super-Morse/morse-dsp" rel="noopener">исходники</a>
+      <a href="https://github.com/Super-Morse/morse-dsp" rel="noopener">source code</a>
     </footer>
   </div>
 

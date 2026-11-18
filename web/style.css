@@ -19,7 +19,8 @@
   --green: #4cf08e;
   --green-glow: rgba(76, 240, 142, 0.45);
   --red: #ff6b5e;
-  --signature: #d4a457;
+  --signature: #318ce7;    /* bleu de France */
+  --signature-hi: #6aaef0;
 
   --radius: 12px;
   --radius-sm: 8px;
@@ -35,7 +36,6 @@ body {
   margin: 0;
   min-height: 100vh;
   min-height: 100dvh;
-  position: relative; /* anchors the signature on small screens */
   font: 14px/1.5 var(--mono);
   color: var(--text);
   background-color: var(--bg);
@@ -382,13 +382,16 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(
 .foot a { color: var(--muted); text-decoration-color: var(--line-hi); text-underline-offset: 3px; }
 
 .signature {
-  position: fixed; right: 16px; bottom: 12px; z-index: 20;
+  /* always pinned to the screen corner, clear of notches and the home bar */
+  position: fixed; z-index: 20;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: calc(12px + env(safe-area-inset-bottom));
   padding: 5px 12px; border-radius: 999px;
   font-size: 12px; letter-spacing: 0.08em; white-space: nowrap;
   color: var(--signature);
-  text-shadow: 0 0 10px rgba(255, 181, 71, 0.28);
-  background: rgba(11, 15, 14, 0.78);
-  border: 1px solid rgba(212, 164, 87, 0.22);
+  text-shadow: 0 0 10px rgba(49, 140, 231, 0.45);
+  background: rgba(11, 15, 14, 0.82);
+  border: 1px solid rgba(49, 140, 231, 0.35);
   -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
   opacity: 0.85; transition: opacity 0.2s, color 0.2s;
   margin: 0;
@@ -405,7 +408,7 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(
   .btn-accent:hover { box-shadow: 0 0 18px rgba(255, 181, 71, 0.18); color: #fff3df; }
   .copy:hover { color: var(--amber-hi); border-color: var(--amber-dim); }
   .foot a:hover { color: var(--amber-hi); }
-  .signature:hover { opacity: 1; color: var(--amber-hi); }
+  .signature:hover { opacity: 1; color: var(--signature-hi); }
 }
 
 /* ---------- responsive ---------- */
@@ -427,7 +430,6 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(
   .panel-settings > .meter { grid-area: meter; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 4px; }
   .panel-settings > .hint { grid-area: hint; }
   .panel-settings .field { border-top: 0; padding: 0 0 10px; }
-  .signature { position: absolute; } /* sits in the page's corner, never over content */
 }
 
 /* Phones in portrait: everything stacks, comfortable spacing for thumbs. */
@@ -447,7 +449,7 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(
   .snr { flex-basis: 100%; }
   .lcd { font-size: 15px; padding: 10px 12px; }
   .foot { gap: 8px; }
-  .signature { right: max(10px, env(safe-area-inset-right)); bottom: calc(12px + env(safe-area-inset-bottom)); padding: 4px 10px; font-size: 11px; }
+  .signature { right: max(10px, env(safe-area-inset-right)); bottom: calc(10px + env(safe-area-inset-bottom)); padding: 4px 10px; font-size: 11px; }
 }
 
 /* Very narrow phones (320–359 px). */
@@ -463,6 +465,7 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(
    settings rack spans the full width below. */
 @media (orientation: landscape) and (max-height: 500px) and (min-width: 600px) {
   .grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "input output" "settings settings"; }
+  .examples-label { display: none; }
   .panel-output .lcd-field + .lcd-field { margin-top: 8px; }
 }
 @media (orientation: landscape) and (max-height: 500px) {
@@ -474,7 +477,6 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(
   textarea { min-height: 84px; }
   .dropzone { min-height: 84px; padding: 12px; }
   .lcd { max-height: 140px; }
-  .signature { position: absolute; }
 }
 
 /* Touch screens: larger targets, and 16 px text so iOS does not zoom on focus. */
