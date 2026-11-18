@@ -4,6 +4,8 @@ A high-performance **Morse code (CW)** toolkit written in pure **Go (Golang)**: 
 
 🚀 **Live Web Console:** [https://super-morse.github.io/morse-dsp](https://super-morse.github.io/morse-dsp)
 
+📘 **Study Guide (Ukrainian):** [morse-dsp зсередини](https://super-morse.github.io/morse-dsp/learn.html) — the architecture, the DSP and the code explained step by step for students.
+
 🔗 **Upcoming Companion:** `sdr-receiver` (Python) — demodulates KiwiSDR / RTL-SDR radio into audio and pipes it straight into `morse-dsp decode`.
 
 <p align="center">
@@ -258,7 +260,7 @@ Exit codes: `0` success, `1` processing error, `2` invalid arguments.
 - **DSP settings:** language, speed (10–40 WPM), tone (400–1000 Hz), automatic tone search.
 - **Output:** *Text* (plain text + Morse with copy buttons and a dot/dash tape) and *Audio* (player + `.wav` download; for audio input a clean signal re-keyed from the decoder's timeline). At least one output is always on — unchecking the last one switches the other on — and a disabled output is not computed in WASM at all.
 
-The site is the `docs/` folder, served by GitHub Pages straight from the `main` branch (**Settings → Pages → Deploy from a branch → `main` / `/docs`**). Because there is no build step on the Pages side, the compiled `docs/main.wasm` and its `wasm_exec.js` are committed: after changing Go code, run `make wasm` and commit both files. The build is reproducible (`-trimpath -buildvcs=false`), and the `wasm.yml` workflow rebuilds it on every push and fails if the committed binary is stale. `docs/.nojekyll` turns off Jekyll processing, and `docs/assets/` holds the README screenshots.
+The site is the `docs/` folder, served by GitHub Pages straight from the `main` branch (**Settings → Pages → Deploy from a branch → `main` / `/docs`**). Because there is no build step on the Pages side, the compiled `docs/main.wasm` and its `wasm_exec.js` are committed: after changing Go code, run `make wasm` and commit both files. The build is reproducible (`-trimpath -buildvcs=false`), and the `wasm.yml` workflow rebuilds it on every push and fails if the committed binary is stale. `docs/.nojekyll` turns off Jekyll processing, `docs/assets/` holds the README screenshots, and `docs/learn.html` is the Ukrainian study guide (print it from the browser to get a PDF).
 
 ```js
 MorseDSP.detect(input)                                     // "text" | "morse" | "empty"
