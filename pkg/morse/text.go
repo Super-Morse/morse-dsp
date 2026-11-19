@@ -49,16 +49,20 @@ func (e *SyntaxError) Error() string {
 }
 
 // EncodeText converts plain text into Morse text: letters are separated by a
-// single space and words by " / ". Input is case-insensitive and may mix Latin
-// and Cyrillic. Runs of whitespace separate words.
+// single space and words by " / ". Input is case-insensitive and may mix
+// scripts; every supported letter (ITU Latin, the European letters with
+// diacritics, Ukrainian and Russian Cyrillic) is encoded without a language
+// flag. Runs of whitespace separate words.
 //
-// lang matters only for Cyrillic «И» (Russian "..", Ukrainian "-.--"). With
-// English, the Cyrillic variant is guessed from the text (DetectLanguage).
+// lang matters only where alphabets disagree: Cyrillic «И» is ".." in Russian
+// and "-.--" in Ukrainian, and Turkish upper-cases i to İ. Unless lang is
+// Russian, Ukrainian or Turkish, the language is detected from the text
+// (DetectLanguage); ambiguous Cyrillic text is taken as Ukrainian.
 //
 // Characters without a Morse code are skipped; in that case the returned error
 // is a *UnknownCharsError and the returned code is still valid.
 func EncodeText(text string, lang Language) (string, error) {
-	if lang != Russian && lang != Ukrainian {
+	if lang != Russian && lang != Ukrainian && lang != Turkish {
 		lang = DetectLanguage(text)
 	}
 	var words []string
@@ -84,9 +88,11 @@ func EncodeText(text string, lang Language) (string, error) {
 }
 
 // NormalizeText returns text as it round-trips through EncodeText and
-// DecodeText in its own language: upper case, aliases folded (Ё → Е, Ґ → Г,
-// ’ → '), unsupported characters removed, words separated by single spaces.
+// DecodeText in its own language: upper case, letters without a code of their
+// own replaced by the letter they are sent as (Ґ → Г, Ё → Е, Ø → Ö, ’ → '),
+// unsupported characters removed, words separated by single spaces.
 func NormalizeText(text string) string {
+	lang := DetectLanguage(text)
 	var b strings.Builder
 	for _, word := range strings.Fields(text) {
 		start := b.Len()
@@ -95,8 +101,8 @@ func NormalizeText(text string) string {
 		}
 		n := 0
 		for _, r := range word {
-			if _, ok := Code(r, English); ok {
-				b.WriteRune(canonicalRune(r))
+			if e, ok := encodeRune(r, lang); ok {
+				b.WriteRune(e.canon)
 				n++
 			}
 		}
@@ -109,7 +115,9 @@ func NormalizeText(text string) string {
 	return b.String()
 }
 
-// DecodeText converts Morse text into plain text using the given alphabet.
+// DecodeText converts Morse text into plain text using the given alphabet;
+// with Auto the alphabet is detected from the whole text first
+// (DetectMorseLanguage).
 //
 // The parser is lenient about notation: dots may be written as . · • ∙ and
 // dashes as - _ − – —. Letters are separated by whitespace; words by "/", "|",
@@ -122,6 +130,9 @@ func DecodeText(code string, lang Language) (string, error) {
 	words, err := splitMorse(code)
 	if err != nil {
 		return "", err
+	}
+	if profileOf(lang) == nil {
+		lang = detectWords(words)
 	}
 	var b strings.Builder
 	var unknown []string

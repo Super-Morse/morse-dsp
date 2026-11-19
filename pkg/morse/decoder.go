@@ -5,6 +5,7 @@ import (
 	"io"
 	"math"
 	"sort"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -28,8 +29,11 @@ type DecoderConfig struct {
 	MinFrequency  float64
 	MaxFrequency  float64
 
-	WPM      float64  // initial speed guess; the decoder adapts from there
-	Language Language // alphabet used to turn codes into characters
+	WPM float64 // initial speed guess; the decoder adapts from there
+
+	// Language is the alphabet used to turn codes into characters. Auto (the
+	// zero value) detects it as the stream goes; see Decoder.
+	Language Language
 
 	WindowMs  float64 // Goertzel window, ms: longer = narrower filter, slower response
 	HopMs     float64 // step between envelope frames, ms
@@ -45,7 +49,8 @@ type DecoderConfig struct {
 	Record bool
 }
 
-// DefaultDecoderConfig returns 8 kHz, 700 Hz, 20 WPM, English alphabet.
+// DefaultDecoderConfig returns 8 kHz, 700 Hz, 20 WPM and automatic language
+// detection.
 func DefaultDecoderConfig() DecoderConfig {
 	return DecoderConfig{
 		SampleRate:   DefaultSampleRate,
@@ -53,7 +58,7 @@ func DefaultDecoderConfig() DecoderConfig {
 		MinFrequency: DefaultMinFrequency,
 		MaxFrequency: DefaultMaxFrequency,
 		WPM:          DefaultWPM,
-		Language:     English,
+		Language:     Auto,
 		WindowMs:     DefaultWindowMs,
 		HopMs:        DefaultHopMs,
 		SquelchDB:    DefaultSquelchDB,
@@ -64,20 +69,59 @@ func DefaultDecoderConfig() DecoderConfig {
 type DecodeResult struct {
 	Text      string   // decoded text
 	Morse     string   // what was heard, as Morse text
+	Language  Language // alphabet used (the detected one with Auto)
 	WPM       float64  // final speed estimate
 	Frequency float64  // tone frequency that was decoded
 	Keying    []KeyRun // detected key timeline (for re-synthesis of a clean signal)
 }
 
-// DecodeSamples decodes a complete buffer of samples.
+// DecodeSamples decodes a complete buffer of samples. With Auto the whole
+// recording is available, so the alphabet is chosen from all of it at once
+// (a stream has to decide as it goes).
 func DecodeSamples(samples []float32, cfg DecoderConfig) (DecodeResult, error) {
 	cfg.Record = true
 	d, err := NewDecoder(cfg)
 	if err != nil {
 		return DecodeResult{}, err
 	}
-	text := d.Process(samples) + d.Flush()
-	return DecodeResult{Text: text, Morse: d.Morse(), WPM: d.WPM(), Frequency: d.Frequency(), Keying: d.Keying()}, nil
+	return d.result(d.Process(samples) + d.Flush()), nil
+}
+
+// DecodeSource decodes src until io.EOF and returns the same result as
+// DecodeSamples, without keeping the audio in memory: use it for recordings
+// (files) rather than live streams.
+func DecodeSource(src SampleSource, cfg DecoderConfig) (DecodeResult, error) {
+	cfg.Record = true
+	d, err := NewDecoder(cfg)
+	if err != nil {
+		return DecodeResult{}, err
+	}
+	var text strings.Builder
+	if err := d.DecodeFrom(src, &text); err != nil {
+		return DecodeResult{}, err
+	}
+	return d.result(text.String()), nil
+}
+
+// result collects the outcome of a recorded decode. With Auto the text is
+// decoded again from the transcript in the alphabet that fits it as a whole.
+func (d *Decoder) result(text string) DecodeResult {
+	r := DecodeResult{Text: text, Morse: d.Morse(), Language: d.Language(),
+		WPM: d.WPM(), Frequency: d.Frequency(), Keying: d.Keying()}
+	if d.auto {
+		r.Language = DetectMorseLanguage(r.Morse)
+		r.Text = decodeLines(r.Morse, r.Language)
+	}
+	return r
+}
+
+// decodeLines decodes a transcript line by line, keeping the line breaks.
+func decodeLines(transcript string, lang Language) string {
+	lines := strings.Split(transcript, "\n")
+	for i, l := range lines {
+		lines[i], _ = DecodeText(l, lang) // unknown codes become UnknownRune
+	}
+	return strings.Join(lines, "\n")
 }
 
 // Decoder is a streaming CW decoder:
@@ -92,9 +136,19 @@ func DecodeSamples(samples []float32, cfg DecoderConfig) (DecodeResult, error) {
 // Flush at the end of the stream. Characters are emitted as soon as the gap
 // after them is long enough, so output is real-time. A Decoder is not safe for
 // concurrent use.
+//
+// With Language Auto the alphabet is detected as the stream goes, without
+// delaying the output: characters are decoded in the active alphabet
+// (English at first), and the choice is revised at every word gap. Only codes
+// that alphabets disagree on beyond the script (Я/Ä/Ą, Ч/Ö/Ó, Ш, Ї) wait for
+// the end of their word until an alphabet has been confirmed. The confirmed
+// alphabet is kept for the session, so later short replies stay in it; it is
+// forgotten after 30 s without signal or on ResetLanguage.
 type Decoder struct {
-	cfg DecoderConfig
-	fs  float64
+	cfg  DecoderConfig
+	fs   float64
+	auto bool        // detect the alphabet
+	lang langTracker // its state
 
 	// automatic tone search
 	tuned     bool
@@ -166,7 +220,7 @@ func NewDecoder(cfg DecoderConfig) (*Decoder, error) {
 		return nil, err
 	}
 	fs := float64(cfg.SampleRate)
-	d := &Decoder{cfg: cfg, fs: fs, lineStart: true, acq: true}
+	d := &Decoder{cfg: cfg, fs: fs, lineStart: true, acq: true, auto: cfg.Language == Auto, lang: newLangTracker()}
 	d.n = max(16, int(math.Round(cfg.WindowMs/1000*fs)))
 	d.hop = min(d.n, max(1, int(math.Round(cfg.HopMs/1000*fs))))
 	d.frameDur = float64(d.hop) / fs
@@ -233,6 +287,8 @@ func (c DecoderConfig) validate() error {
 		return errors.New("morse: squelch must be 0..60 dB")
 	case c.LineBreak < 0:
 		return errors.New("morse: line break interval must not be negative")
+	case c.Language != Auto && profileOf(c.Language) == nil:
+		return errors.New("morse: unknown language")
 	}
 	return nil
 }
@@ -287,7 +343,29 @@ func (d *Decoder) Flush() string {
 	if len(d.marks) > 0 {
 		d.emitChar()
 	}
+	if d.auto {
+		d.out = append(d.out, d.lang.flush()...)
+	}
 	return d.take()
+}
+
+// Language returns the alphabet in use: the configured one, or with Auto the
+// one currently chosen by the detector.
+func (d *Decoder) Language() Language {
+	if d.auto {
+		return d.lang.active
+	}
+	return d.cfg.Language
+}
+
+// ResetLanguage makes an Auto decoder forget the detected session language,
+// as if the stream started afresh (for example after retuning to another
+// station). Characters still waiting for their word to end are output first.
+func (d *Decoder) ResetLanguage() {
+	if d.auto {
+		d.out = append(d.out, d.lang.flush()...)
+		d.lang.forget()
+	}
 }
 
 // WPM returns the current speed estimate.
@@ -601,6 +679,7 @@ func (d *Decoder) carrier() {
 		d.addKeying(false, float64(d.run)*d.frameDur)
 	}
 	d.marks = d.marks[:0]
+	d.endTransmission()
 	for i := range d.noiseRing {
 		d.noiseRing[i] = d.sigDB
 	}
@@ -680,6 +759,9 @@ func (d *Decoder) finishAcq() {
 // space or line break as soon as the gap is long enough to be sure.
 func (d *Decoder) checkGap() {
 	g := float64(d.run) * d.frameDur
+	if d.auto && g >= sessionSilence && d.lang.session != Auto {
+		d.lang.forget()
+	}
 	if d.acq {
 		if !d.seenMark || g < math.Max(acqMaxGap, 10*d.speed.unit) {
 			return
@@ -692,6 +774,7 @@ func (d *Decoder) checkGap() {
 		// another speed
 		d.acq, d.seenMark = true, false
 		d.speed.reset()
+		d.endTransmission()
 	}
 }
 
@@ -704,8 +787,12 @@ func (d *Decoder) gapReached(g float64) {
 	}
 	if d.sinceSpace && g >= 5*u {
 		d.pendingSpace, d.sinceSpace = true, false
+		if d.auto {
+			d.out = append(d.out, d.lang.endWord()...)
+		}
 	}
 	if d.cfg.LineBreak > 0 && d.sinceLine && g >= d.cfg.LineBreak {
+		d.endTransmission()
 		d.out = append(d.out, '\n')
 		if d.cfg.Record {
 			d.morse = append(d.morse, '\n')
@@ -725,14 +812,11 @@ func (d *Decoder) emitChar() {
 		}
 	}
 	d.marks = d.marks[:0]
-	r, ok := Char(string(code), d.cfg.Language)
-	if !ok {
-		r = UnknownRune
+	if d.auto {
+		d.out = append(d.out, d.lang.char(string(code), d.pendingSpace)...)
+	} else {
+		d.appendChar(string(code))
 	}
-	if d.pendingSpace {
-		d.out = append(d.out, ' ')
-	}
-	d.out = utf8.AppendRune(d.out, r)
 	if d.cfg.Record {
 		if !d.lineStart {
 			if d.pendingSpace {
@@ -745,6 +829,27 @@ func (d *Decoder) emitChar() {
 	}
 	d.pendingSpace, d.lineStart = false, false
 	d.sinceSpace, d.sinceLine = true, true
+}
+
+// appendChar outputs a character in the configured alphabet.
+func (d *Decoder) appendChar(code string) {
+	r, ok := Char(code, d.cfg.Language)
+	if !ok {
+		r = UnknownRune
+	}
+	if d.pendingSpace {
+		d.out = append(d.out, ' ')
+	}
+	d.out = utf8.AppendRune(d.out, r)
+}
+
+// endTransmission resolves the word in progress and starts a new phrase for
+// the language detector (after a long gap, a line break or a carrier).
+func (d *Decoder) endTransmission() {
+	if d.auto {
+		d.out = append(d.out, d.lang.flush()...)
+		d.lang.newTransmission()
+	}
 }
 
 func (d *Decoder) addKeying(on bool, dur float64) {

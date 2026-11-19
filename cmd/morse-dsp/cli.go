@@ -27,12 +27,20 @@ Input is the text arguments, else --in FILE, else stdin. Output goes to
 are decoded, anything else is encoded.
 
 Scenarios:
-  A  text → Morse     morse-dsp encode "HELLO WORLD"
+  A  text → Morse     morse-dsp encode "ПРИВІТ, ЕФІРЕ! 73"
   B  Morse → text     morse-dsp decode --in-format text ".... . .-.. .-.. ---"
-  C  text → audio     morse-dsp encode --out-format wav -o hello.wav "HELLO"
-                      morse-dsp encode --out-format pcm "HELLO" | aplay -f S16_LE -r 8000
-  D  audio → text     morse-dsp decode -i hello.wav
+  C  text → audio     morse-dsp encode --out-format wav -o cq.wav "CQ CQ DE UR5ABC K"
+                      morse-dsp encode --out-format pcm "CQ DE UR5ABC" | aplay -f S16_LE -r 8000
+  D  audio → text     morse-dsp decode -i cq.wav
                       python sdr.py | morse-dsp decode --in-format pcm --rate 12000
+
+Languages (--lang auto, the default):
+  Any supported letter is encoded without a flag: ITU Latin, German Ä Ö Ü ẞ,
+  French À Ç È É, Spanish Á Ñ Ó, Polish Ą Ć Ę Ł Ń Ś Ź Ż, Nordic Å Ä Ö Æ Ø,
+  Turkish Ç Ğ İ Ş, Ukrainian and Russian Cyrillic. Decoding detects the
+  alphabet; ham abbreviations, callsigns and short bursts read as ITU. Files
+  are decoded as a whole; stdin is decoded live, character by character, and
+  short replies keep the language last detected in the session.
 
 Flags:
 `
@@ -115,7 +123,7 @@ func newFlagSet(opt *options, stderr io.Writer) (*flag.FlagSet, *string) {
 	fs.Float64Var(&opt.wpm, "wpm", morse.DefaultWPM, "speed in words per minute (decoder: initial guess, adapts automatically)")
 	fs.StringVar(&opt.freq, "freq", "700", "tone frequency in Hz; for decoding also `auto` (search 300–1500 Hz)")
 	fs.IntVar(&opt.rate, "rate", morse.DefaultSampleRate, "sample rate in Hz of generated audio and of raw PCM input")
-	fs.StringVar(&opt.lang, "lang", "en", "alphabet: `en`, ru or ua (decoding needs it; for encoding it picks the code of Cyrillic И)")
+	fs.StringVar(&opt.lang, "lang", "auto", "alphabet: `auto`, en, ua, ru, de, fr, es, pl, sv or tr (a fixed one overrides detection)")
 	fs.Float64Var(&opt.snr, "snr", 0, "add white noise at this SNR in dB (encode to audio)")
 	fs.Uint64Var(&opt.seed, "seed", 0, "noise seed (default: random)")
 	fs.Float64Var(&opt.amp, "amp", morse.DefaultAmplitude, "tone amplitude, 0..1")
@@ -296,6 +304,9 @@ func processText(opt *options, lang morse.Language, in io.Reader, out, stderr io
 	if !decode {
 		return encode(opt, lang, text, out, stderr)
 	}
+	if opt.verbose {
+		reportLanguage(stderr, lang, func() morse.Language { return morse.DetectMorseLanguage(text) })
+	}
 	plain, err := morse.DecodeText(text, lang)
 	if err != nil && !warnPartial(err, stderr) {
 		return err
@@ -326,7 +337,19 @@ func sniff(r *bufio.Reader) string {
 	return "text"
 }
 
+// reportLanguage prints the alphabet in use; detect runs only for auto.
+func reportLanguage(stderr io.Writer, lang morse.Language, detect func() morse.Language) {
+	how := "fixed"
+	if lang == morse.Auto {
+		lang, how = detect(), "detected"
+	}
+	fmt.Fprintf(stderr, "morse-dsp: language %s (%s)\n", lang.Name(), how)
+}
+
 func encode(opt *options, lang morse.Language, text string, out io.Writer, stderr io.Writer) error {
+	if opt.verbose && !morse.IsMorse(text) {
+		reportLanguage(stderr, lang, func() morse.Language { return morse.DetectLanguage(text) })
+	}
 	if opt.outFormat == "text" {
 		code, err := morse.EncodeText(text, lang)
 		warnPartial(err, stderr) // the only possible error: skipped characters
@@ -423,12 +446,35 @@ func decodeAudio(opt *options, lang morse.Language, format string, in io.Reader,
 	if err != nil {
 		return err
 	}
+	if opt.inPath != "" && opt.inPath != "-" {
+		return decodeFile(opt, src, cfg, out, stderr)
+	}
+	return decodeLive(opt, src, cfg, out, stderr)
+}
+
+// decodeFile decodes a recording as a whole, so that the alphabet is chosen
+// from all of it.
+func decodeFile(opt *options, src morse.SampleSource, cfg morse.DecoderConfig, out, stderr io.Writer) error {
+	r, err := morse.DecodeSource(src, cfg)
+	if err != nil {
+		return err
+	}
+	if r.Text != "" {
+		if _, err := fmt.Fprintln(out, r.Text); err != nil {
+			return err
+		}
+	}
+	reportDecode(opt, stderr, r.Frequency, r.WPM, r.Language)
+	return nil
+}
+
+// decodeLive writes text as soon as it is decoded (stdin may be a receiver).
+func decodeLive(opt *options, src morse.SampleSource, cfg morse.DecoderConfig, out, stderr io.Writer) error {
 	dec, err := morse.NewDecoder(cfg)
 	if err != nil {
 		return err
 	}
-	// Text is written as soon as it is decoded; track the last byte so the
-	// output ends with exactly one newline.
+	// track the last byte so that the output ends with exactly one newline
 	tw := &tailWriter{w: out}
 	err = dec.DecodeFrom(src, tw)
 	if err == nil && tw.n > 0 && tw.last != '\n' {
@@ -437,10 +483,14 @@ func decodeAudio(opt *options, lang morse.Language, format string, in io.Reader,
 	if err != nil {
 		return err
 	}
-	if opt.verbose {
-		fmt.Fprintf(stderr, "morse-dsp: tone %.1f Hz, speed ≈ %.1f WPM\n", dec.Frequency(), dec.WPM())
-	}
+	reportDecode(opt, stderr, dec.Frequency(), dec.WPM(), dec.Language())
 	return nil
+}
+
+func reportDecode(opt *options, stderr io.Writer, freq, wpm float64, lang morse.Language) {
+	if opt.verbose {
+		fmt.Fprintf(stderr, "morse-dsp: tone %.1f Hz, speed ≈ %.1f WPM, language %s\n", freq, wpm, lang.Name())
+	}
 }
 
 func decoderConfig(opt *options, lang morse.Language) (morse.DecoderConfig, error) {

@@ -9,7 +9,10 @@
 //
 // needText / needAudio select which outputs are produced, so no work is spent
 // on synthesizing a WAV nobody listens to (or on text nobody reads).
-// opts: {lang: "en"|"ru"|"ua", wpm, freq, rate, autoFreq, snr, seed}.
+// opts: {lang, wpm, freq, rate, autoFreq, snr, seed}. lang is optional: by
+// default ("auto") the alphabet is detected from the input; "en", "ua", "ru",
+// "de", "fr", "es", "pl", "sv" or "tr" forces one. Results of processText and
+// processAudio carry the alphabet used as lang (tag) and langName.
 // Every call returns {ok: true, ...} or {ok: false, error}.
 //
 // Build: make wasm (GOOS=js GOARCH=wasm go build -trimpath -buildvcs=false -ldflags="-s -w" -o docs/main.wasm ./cmd/wasm)
@@ -23,7 +26,7 @@ import (
 	"github.com/Super-Morse/morse-dsp/pkg/morse"
 )
 
-const version = "1.0.0"
+const version = "1.1.0"
 
 func main() {
 	api := js.Global().Get("Object").New()
@@ -146,7 +149,7 @@ func processText(args []js.Value) (result, error) {
 	if err != nil {
 		return nil, err
 	}
-	res := result{"kind": c.kind, "warnings": c.warnings}
+	res := result{"kind": c.kind, "warnings": c.warnings, "lang": c.lang.String(), "langName": c.lang.Name()}
 	if needText {
 		res["text"] = c.text
 		res["morse"] = c.code
@@ -162,17 +165,30 @@ func processText(args []js.Value) (result, error) {
 // conversion is the text side of processText.
 type conversion struct {
 	kind, text, code string
+	lang             morse.Language // the alphabet used
 	warnings         []any
+}
+
+// resolve returns lang, or with Auto the detected language.
+func resolve(lang morse.Language, detect func(string) morse.Language, input string) morse.Language {
+	if lang == morse.Auto {
+		return detect(input)
+	}
+	return lang
 }
 
 // fromMorse normalizes Morse input and, if needed, decodes it.
 func fromMorse(input string, needText bool, lang morse.Language) (conversion, error) {
 	c := conversion{kind: "morse"}
 	var err error
-	if c.code, err = morse.NormalizeMorse(input); err != nil || !needText {
+	if c.code, err = morse.NormalizeMorse(input); err != nil {
 		return c, err
 	}
-	c.text, err = morse.DecodeText(input, lang)
+	c.lang = resolve(lang, morse.DetectMorseLanguage, input)
+	if !needText {
+		return c, nil
+	}
+	c.text, err = morse.DecodeText(input, c.lang)
 	var uk *morse.UnknownCodesError
 	if errors.As(err, &uk) {
 		c.warnings = append(c.warnings, "Unknown codes were replaced with *: "+strings.Join(uk.Codes, " "))
@@ -184,7 +200,7 @@ func fromMorse(input string, needText bool, lang morse.Language) (conversion, er
 // fromText encodes plain text; the normalized text is cheap, so it is
 // always filled in.
 func fromText(input string, lang morse.Language) (conversion, error) {
-	c := conversion{kind: "text", text: morse.NormalizeText(input)}
+	c := conversion{kind: "text", text: morse.NormalizeText(input), lang: resolve(lang, morse.DetectLanguage, input)}
 	var err error
 	c.code, err = morse.EncodeText(input, lang)
 	var uc *morse.UnknownCharsError
@@ -254,6 +270,8 @@ func processAudio(args []js.Value) (result, error) {
 		"freq":       r.Frequency,
 		"sampleRate": rate,
 		"duration":   float64(len(samples)) / float64(rate),
+		"lang":       r.Language.String(),
+		"langName":   r.Language.Name(),
 	}
 	if needText {
 		res["text"] = r.Text

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>morse-dsp зсередини · навчальний матеріал</title>
-<meta name="description" content="Навчальний розбір проєкту morse-dsp для студента: абетки Морзе, синтез звуку, DSP-декодер Гьорцеля, WebAssembly, CLI і Unix-pipe.">
+<meta name="description" content="Навчальний розбір проєкту morse-dsp для студента: абетки Морзе й автоматичне визначення мови, синтез звуку, DSP-декодер Гьорцеля, WebAssembly, CLI і Unix-pipe.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f1513'/%3E%3Ccircle cx='8' cy='16' r='3' fill='%23ffb547'/%3E%3Crect x='14' y='13' width='12' height='6' rx='3' fill='%23ffb547'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -96,6 +96,7 @@ figure { margin: 0; }
 figure.code { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--code); }
 figure.code figcaption { font-family: var(--mono); font-size: 12.5px; color: var(--muted); padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--surface); }
 figure.code pre { margin: 0; padding: 14px; overflow-x: auto; font: 13px/1.55 var(--mono); tab-size: 4; }
+figure.code pre code { background: none; border: 0; padding: 0; border-radius: 0; font-size: inherit; overflow-wrap: normal; }
 
 /* diagrams */
 figure.diagram { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 10px; }
@@ -119,6 +120,8 @@ figure.diagram figcaption { font-size: 14px; color: var(--muted); max-width: 70c
 .fig .key-ok { fill: var(--core); }
 .fig .track { fill: var(--soft); }
 .fig .bar { fill: var(--core); }
+.fig .bar-m { fill: var(--muted); fill-opacity: 0.4; }
+.fig .lb-win { font-size: 12px; font-weight: 600; fill: var(--core); }
 .fig .brk { stroke: var(--muted); stroke-width: 1.2; }
 .fig .brk-t { font-size: 12px; fill: var(--ink); font-family: var(--mono); }
 .fig .tick { stroke: var(--muted); stroke-width: 1; }
@@ -206,7 +209,7 @@ footer { display: grid; gap: 14px; border-top: 1px solid var(--line); padding-to
   <ol>
     <li><a href="#map"><span>01</span>Карта системи</a></li>
     <li><a href="#flow"><span>02</span>Шлях сигналу</a></li>
-    <li><a href="#codec"><span>03</span>Абетки й кодек</a></li>
+    <li><a href="#codec"><span>03</span>Абетки й мови</a></li>
     <li><a href="#encoder"><span>04</span>Синтез звуку</a></li>
     <li><a href="#decoder"><span>05</span>DSP-декодер</a></li>
     <li><a href="#wav"><span>06</span>WAV і сирий PCM</a></li>
@@ -227,7 +230,7 @@ footer { display: grid; gap: 14px; border-top: 1px solid var(--line); padding-to
   <div class="chips" aria-label="Учасники">
     <span class="chip core">Ядро</span><span class="chip cli">CLI</span><span class="chip web">Браузер і WASM</span><span class="chip sdr">SDR (майбутнє)</span>
   </div>
-  <p class="small">Описано код гілки <code>main</code> станом на 18 листопада 2026 року · <a href="https://github.com/Super-Morse/morse-dsp">github.com/Super-Morse/morse-dsp</a> · <a href="https://super-morse.github.io/morse-dsp">жива версія</a></p>
+  <p class="small">Описано код гілки <code>main</code> станом на 19 листопада 2026 року · <a href="https://github.com/Super-Morse/morse-dsp">github.com/Super-Morse/morse-dsp</a> · <a href="https://super-morse.github.io/morse-dsp">жива версія</a></p>
 </header>
 
 <!-- ============================================================ 01 -->
@@ -284,7 +287,7 @@ footer { display: grid; gap: 14px; border-top: 1px solid var(--line); padding-to
   <div class="tbl"><table>
     <thead><tr><th>Задача</th><th>Де</th><th>Файл</th></tr></thead>
     <tbody>
-      <tr><td>Абетки EN / RU / UA, кодування тексту</td><td><span class="chip core">Ядро</span></td><td><code>pkg/morse/alphabet.go</code>, <code>text.go</code></td></tr>
+      <tr><td>Профілі мов, кодування тексту, визначення мови</td><td><span class="chip core">Ядро</span></td><td><code>pkg/morse/profiles.go</code>, <code>alphabet.go</code>, <code>detect.go</code>, <code>text.go</code></td></tr>
       <tr><td>Синтез звуку з шумом</td><td><span class="chip core">Ядро</span></td><td><code>pkg/morse/encoder.go</code></td></tr>
       <tr><td>Декодування звуку, пошук тону</td><td><span class="chip core">Ядро</span></td><td><code>pkg/morse/decoder.go</code>, <code>freq.go</code></td></tr>
       <tr><td>Читання й запис WAV і сирого PCM</td><td><span class="chip core">Ядро</span></td><td><code>pkg/morse/wav.go</code>, <code>pcm.go</code></td></tr>
@@ -350,36 +353,116 @@ sequenceDiagram
 
 <!-- ============================================================ 03 -->
 <section id="codec">
-  <div><span class="num">03</span><h2>Абетки й текстовий кодек</h2></div>
-  <p>Кожна літера кодується послідовністю крапок і тире. Латиниця, російська й українська абетки здебільшого використовують ті самі коди: <code>..</code> — це латинська I, російська И і українська І. Тому для <b>декодування</b> програмі обов'язково треба знати мову (<code>--lang en|ru|ua</code>). Для <b>кодування</b> мова майже не потрібна, бо кожна літера сама належить до своєї абетки. Виняток — кирилична «И».</p>
+  <div><span class="num">03</span><h2>Абетки, кодек і визначення мови</h2></div>
+  <p>Кожна літера кодується послідовністю крапок і тире. Абетки різних мов здебільшого використовують ті самі коди: <code>..</code> — це латинська I, російська И і українська І, а <code>.-.-</code> — українська Я, німецька Ä і польська Ą. Тому кожна абетка описана окремим записом-<b>профілем</b>, а програма сама з'ясовує, якою мовою написано текст. Прапорець мови не потрібен; <code>--lang</code> лишився тільки для того, щоб примусово задати абетку.</p>
+  <h3>Профілі мов</h3>
+  <p>Профіль <code>LanguageProfile</code> складається лише з даних: власні літери мови з кодами, літери без власного коду (їх передають як іншу літеру), таблиця частот літер, характерні пари літер у трьох ярусах ваги і частотні слова. Під час запуску з цих даних будуються таблиці кодування й декодування та ваги детектора. Щоб додати мову, досить дописати новий запис у <code>pkg/morse/profiles.go</code>.</p>
   <div class="tbl"><table>
-    <thead><tr><th>Літера</th><th>Російська</th><th>Українська</th><th>Коментар</th></tr></thead>
+    <thead><tr><th>Профіль</th><th>Власні літери</th><th>Примітка</th></tr></thead>
     <tbody>
-      <tr><td>И</td><td><code>..</code></td><td><code>-.--</code></td><td>одна літера — два коди; тому кодуванню потрібна мова</td></tr>
-      <tr><td>І</td><td>—</td><td><code>..</code></td><td>українська І бере код російської И</td></tr>
-      <tr><td>Ы</td><td><code>-.--</code></td><td>—</td><td>українська И бере код російської Ы</td></tr>
-      <tr><td>Э / Є</td><td><code>..-..</code></td><td><code>..-..</code></td><td>той самий код, різні літери</td></tr>
-      <tr><td>Ї</td><td>—</td><td><code>.---.</code></td><td>власний код</td></tr>
-      <tr><td>Ъ</td><td><code>--.--</code></td><td>—</td><td>лише в російській</td></tr>
-      <tr><td>Ґ</td><td>—</td><td>як Г: <code>--.</code></td><td>окремого коду немає, Ґ передається як Г</td></tr>
+      <tr><td>Англійська (ITU)</td><td>—</td><td>за замовчуванням; радіоаматорські скорочення CQ, DE, QTH, RST, 73 і позивні</td></tr>
+      <tr><td>Українська</td><td>И <code>-.--</code> · І <code>..</code> · Ї <code>.---.</code> · Є <code>..-..</code></td><td>Ґ передається як Г; за замовчуванням для неоднозначної кирилиці</td></tr>
+      <tr><td>Російська</td><td>И <code>..</code> · Ы <code>-.--</code> · Э <code>..-..</code> · Ъ <code>--.--</code></td><td>Ё передається як Е</td></tr>
+      <tr><td>Німецька</td><td>Ä <code>.-.-</code> · Ö <code>---.</code> · Ü <code>..--</code> · ẞ <code>...--..</code></td><td>ß теж приймається</td></tr>
+      <tr><td>Французька</td><td>À <code>.--.-</code> · Ç <code>-.-..</code> · È <code>.-..-</code> · É <code>..-..</code></td><td>Ê, Ô, Û та інші — як базова літера</td></tr>
+      <tr><td>Іспанська</td><td>Á · É · Ñ <code>--.--</code> · Ó · Ü</td><td>Í, Ú — як I, U</td></tr>
+      <tr><td>Польська</td><td>Ą Ć Ę Ł Ń Ó Ś <code>...-...</code> Ź Ż</td><td></td></tr>
+      <tr><td>Шведська, скандинавська</td><td>Å · Ä · Ö · É</td><td>Æ, Ø — як Ä, Ö</td></tr>
+      <tr><td>Турецька</td><td>Ç · Ğ <code>--.-.</code> · İ <code>.-..-</code> · Ö · Ş <code>.--..</code> · Ü</td><td>турецькі великі літери: i → İ</td></tr>
     </tbody>
   </table></div>
-  <figure class="code"><figcaption>pkg/morse/alphabet.go · Code()</figcaption><pre><code>func Code(r rune, lang Language) (string, bool) {
-    r = canonicalRune(r)
-    if c, ok := common[r]; ok {
-        return c, true
+  <h3>Кодування</h3>
+  <p>Будь-яка підтримувана літера має той самий код у всіх мовах, тому текст кодується без прапорця. Єдина літера, у якій абетки розходяться, — кирилична «И»: у російській це <code>..</code>, а в українській <code>-.--</code>. Її долю вирішує <code>DetectLanguage</code> за літерами-маркерами (І, Ї, Є, Ґ означають українську, Ы, Ъ, Э, Ё — російську) і за статистикою слів. Якщо текст нічим не видає мову, як «Дим», обирається українська.</p>
+  <figure class="code"><figcaption>pkg/morse/alphabet.go · Code(), encodeRune()</figcaption><pre><code>func Code(r rune, lang Language) (string, bool) {
+    e, ok := encodeRune(r, lang)
+    return e.code, ok
+}
+
+func encodeRune(r rune, lang Language) (encodeEntry, bool) {
+    r = upper(r, lang)
+    if p := profileOf(lang); p != nil {
+        if c, ok := p.tables.encode[r]; ok {
+            return encodeEntry{c, canonical(p, r)}, true
+        }
     }
-    primary, secondary := russianLetters, ukrainianLetters
-    if lang == Ukrainian {
-        primary, secondary = ukrainianLetters, russianLetters
-    }
-    if c, ok := primary[r]; ok {
-        return c, true
-    }
-    c, ok := secondary[r]
-    return c, ok
+    e, ok := encodeTable[r]
+    return e, ok
 }</code></pre></figure>
-  <p>Спочатку шукається спільна таблиця (латиниця, цифри, розділові знаки), потім таблиця обраної мови, потім друга кирилична. Тому будь-яка кирилична літера кодується в будь-якому режимі, а мова вирішує лише долю «И». Якщо мову не вказано (<code>en</code>), <code>DetectLanguage</code> вгадує її з тексту: літери І, Ї, Є, Ґ означають українську, Ы, Э, Ъ, Ё — російську. Слово «Дим» без цих літер неоднозначне, тож програма припускає російську; для української треба явно вказати <code>--lang ua</code>.</p>
+  <p>Спочатку шукаються власні літери обраної мови (лише так російська отримує свою «И»), потім спільна таблиця всіх підтримуваних символів. У ній «И» має український код, бо українська стоїть у реєстрі раніше за російську.</p>
+  <h3>Декодування: кожна абетка читає по-своєму</h3>
+  <p>Код Морзе мови не підказує, тож декодер читає кожне слово всіма дев'ятьма абетками й оцінює кожне прочитання:</p>
+  <ol style="margin:0;padding-left:22px;display:grid;gap:8px;max-width:68ch">
+    <li><b>Невідомі коди.</b> За кожен код, якого в абетці немає, — великий штраф (−6). Абетка, яка не може прочитати фразу, фактично вибуває, але один зіпсований шумом код не перекине довгу англійську передачу на кирилицю.</li>
+    <li><b>Унікальні маркери.</b> Код, який мають лише деякі абетки, дає їм бонус, поділений між ними: <code>.---.</code> є лише в українській (Ї), <code>...-...</code> — лише в польській (Ś).</li>
+    <li><b>Статистика.</b> Частоти літер (логарифм правдоподібності), характерні пари й частотні слова кожного прочитання. Радіоаматорські скорочення й позивні важать дуже багато на користь ITU.</li>
+    <li><b>Запасний варіант.</b> Англійська (ITU) лишається, доки інша абетка не виграє з помітним відривом, тому короткі й неоднозначні сигнали читаються як ITU. Латинська абетка без жодної власної літери у фразі читає її точно так само, як англійська, тож її бали зараховуються англійській. Серед кириличних абеток так само за замовчуванням іде українська.</li>
+  </ol>
+  <figure class="diagram">
+    <div class="scroll"><svg viewBox="0 0 840 326" role="img" aria-label="Код Морзе слів «ЯК СПРАВИ», прочитаний дев'ятьма абетками, з оцінкою детектора для кожного прочитання: українське прочитання має найвищу оцінку, 18,7; абетки без коду Я мають оцінки нижче нуля" class="fig fig-lang">
+<text x="20" y="26" class="code-t">.-.- -.- / ... .--. .-. .- .-- -.--</text>
+<text x="560" y="26" text-anchor="middle" class="ax-t">0</text>
+<line x1="560" y1="36" x2="560" y2="306" class="tick"/>
+<text x="20" y="62" class="lb-win">Українська</text>
+<text x="168" y="62" class="letter">ЯК СПРАВИ</text>
+<rect x="560.0" y="49" width="168.3" height="16" rx="3" class="bar"/>
+<text x="736.3" y="62" class="ax-t">+18,7</text>
+<text x="20" y="90" class="ax-t">Російська</text>
+<text x="168" y="90" class="code-t">ЯК СПРАВЫ</text>
+<rect x="560.0" y="77" width="77.4" height="16" rx="3" class="bar-m"/>
+<text x="645.4" y="90" class="ax-t">+8,6</text>
+<text x="20" y="118" class="ax-t">Польська</text>
+<text x="168" y="118" class="code-t">ĄK SPRAWY</text>
+<rect x="560.0" y="105" width="59.4" height="16" rx="3" class="bar-m"/>
+<text x="627.4" y="118" class="ax-t">+6,6</text>
+<text x="20" y="146" class="ax-t">Англійська (ITU)</text>
+<text x="168" y="146" class="code-t">*K SPRAWY</text>
+<rect x="560.0" y="133" width="22.5" height="16" rx="3" class="bar-m"/>
+<text x="590.5" y="146" class="ax-t">+2,5</text>
+<text x="20" y="174" class="ax-t">Шведська</text>
+<text x="168" y="174" class="code-t">ÄK SPRAWY</text>
+<rect x="551.9" y="161" width="8.1" height="16" rx="3" class="bar-m"/>
+<text x="543.9" y="174" text-anchor="end" class="ax-t">−0,9</text>
+<text x="20" y="202" class="ax-t">Німецька</text>
+<text x="168" y="202" class="code-t">ÄK SPRAWY</text>
+<rect x="502.4" y="189" width="57.6" height="16" rx="3" class="bar-m"/>
+<text x="494.4" y="202" text-anchor="end" class="ax-t">−6,4</text>
+<text x="20" y="230" class="ax-t">Турецька</text>
+<text x="168" y="230" class="code-t">*K SPRAWY</text>
+<rect x="486.2" y="217" width="73.8" height="16" rx="3" class="bar-m"/>
+<text x="478.2" y="230" text-anchor="end" class="ax-t">−8,2</text>
+<text x="20" y="258" class="ax-t">Іспанська</text>
+<text x="168" y="258" class="code-t">*K SPRAWY</text>
+<rect x="452.9" y="245" width="107.1" height="16" rx="3" class="bar-m"/>
+<text x="444.9" y="258" text-anchor="end" class="ax-t">−11,9</text>
+<text x="20" y="286" class="ax-t">Французька</text>
+<text x="168" y="286" class="code-t">*K SPRAWY</text>
+<rect x="445.7" y="273" width="114.3" height="16" rx="3" class="bar-m"/>
+<text x="437.7" y="286" text-anchor="end" class="ax-t">−12,7</text>
+</svg></div>
+    <figcaption>Той самий запис Морзе прочитано всіма абетками; число — оцінка детектора за два слова. Абетки без коду <code>.-.-</code> отримують «*» і штраф. Польська й шведська читають Ą та Ä, але SPRAWY не схоже на їхні слова й частоти. Українське прочитання має знайомі слова й пари літер і перемагає з великим відривом.</figcaption>
+  </figure>
+  <figure class="code"><figcaption>pkg/morse/detect.go · bestOr()</figcaption><pre><code>func (e *evidence) bestOr(def Language) Language {
+    eff := e.effective()
+    if math.IsInf(eff[def], -1) { // a Latin default without its letters reads as English
+        def = English
+    }
+    best := def
+    for l := English; l &lt; numLanguages; l++ {
+        if eff[l] &gt; eff[best] {
+            best = l
+        }
+    }
+    if d := scriptDefault(best); eff[best]-eff[d] &lt; defaultMargin {
+        best = d
+    }
+    if eff[best]-eff[def] &lt; defaultMargin {
+        return def
+    }
+    return best
+}</code></pre></figure>
+  <h3>Потік без затримки й мова сеансу</h3>
+  <p>У потоковому режимі (<code>Process</code>, <code>DecodeReader</code>, <code>DecodeChan</code>) декодер не чекає кінця фрази: кожен символ виходить одразу на паузі між літерами в активній абетці. До кінця слова чекають лише коди, у яких абетки розходяться не тільки писемністю (Я/Ä/Ą, Ч/Ö/Ó, Ш, Ї), і лише доти, доки абетку не підтверджено. На кожній паузі між словами оцінки оновлюються, і активна абетка може змінитися для наступних слів.</p>
+  <p>Остання впевнено визначена абетка стає <b>мовою сеансу</b>. Нова передача починається в ній, а коротка відповідь («ТАК», «JA») лишається в ній і не скидається на англійську. Через 30 с тиші або після <code>ResetLanguage()</code> мова сеансу забувається. Ціна нульової затримки — перше слово після зміни мови: в українському сеансі «CQ» спершу виходить як «ЦЩ», а з наступного слова все правильно. Записи цілком (<code>DecodeSamples</code>, <code>DecodeSource</code>, а в CLI — файл через <code>-i</code>) обирають абетку за всією фразою, і такого слова там немає.</p>
   <h3>Формат тексту Морзе</h3>
   <p>Кодек видає канонічну форму: літери розділені одним пробілом, слова — <code>" / "</code>. Розбір навмисно поблажливий: крапкою вважаються <code>. · •</code>, тире — <code>- _ − – —</code>, а словá можна розділяти через <code>/</code>, <code>|</code>, перевід рядка або два й більше пробілів. Кілька символів зводяться до канонічних: Ё → Е, Ґ → Г, типографський апостроф <code>’</code> і український <code>ʼ</code> → <code>'</code>.</p>
   <div class="cards">
@@ -666,8 +749,12 @@ sequenceDiagram
     }
     if d.sinceSpace &amp;&amp; g &gt;= 5*u {
         d.pendingSpace, d.sinceSpace = true, false
+        if d.auto {
+            d.out = append(d.out, d.lang.endWord()...)
+        }
     }
     if d.cfg.LineBreak &gt; 0 &amp;&amp; d.sinceLine &amp;&amp; g &gt;= d.cfg.LineBreak {
+        d.endTransmission()
         d.out = append(d.out, '\n')
         if d.cfg.Record {
             d.morse = append(d.morse, '\n')
@@ -675,7 +762,7 @@ sequenceDiagram
         d.sinceLine, d.sinceSpace, d.pendingSpace, d.lineStart = false, false, false, true
     }
 }</code></pre></figure>
-  <p>Посилка коротша за <code>2u</code> — крапка, інакше тире. Функцію викликають на кожному кадрі паузи зі зростаючою довжиною: коли пауза перевищує 2u, літера вже точно скінчилася, і її можна друкувати, не чекаючи наступної посилки. Пробіл ставиться після 5u, але друкується лише перед наступною літерою, тому в кінці тексту немає зайвого пробілу.</p>
+  <p>Посилка коротша за <code>2u</code> — крапка, інакше тире. Функцію викликають на кожному кадрі паузи зі зростаючою довжиною: коли пауза перевищує 2u, літера вже точно скінчилася, і її можна друкувати, не чекаючи наступної посилки. Пробіл ставиться після 5u, але друкується лише перед наступною літерою, тому в кінці тексту немає зайвого пробілу. У режимі Auto готовий символ спершу проходить через трекер мови (розділ 03): пауза 5u закриває слово, а довга пауза, перенесення рядка чи несуча — усю передачу.</p>
 
   <h3>5.7 Особливі випадки</h3>
   <div class="cards">
@@ -741,22 +828,21 @@ sequenceDiagram
 <!-- ============================================================ 08 -->
 <section id="web">
   <div><span class="num">08</span><h2>Веб-інтерфейс</h2></div>
-  <p>Інтерфейс складається з трьох файлів без фреймворків і збирання: <code>index.html</code> (розмітка), <code>style.css</code> (тема радіоаматорської консолі) і <code>app.js</code> (≈600 рядків). Меню англійською; російська й українська є мовами розпізнавання, а не інтерфейсу. Нижче підписи наведено так, як їх видно на екрані.</p>
+  <p>Інтерфейс складається з трьох файлів без фреймворків і збирання: <code>index.html</code> (розмітка), <code>style.css</code> (тема радіоаматорської консолі) і <code>app.js</code> (≈600 рядків). Меню англійською, а мову тексту сторінка не питає: її визначає ядро. Нижче підписи наведено так, як їх видно на екрані.</p>
   <div class="tbl"><table>
     <thead><tr><th>Блок</th><th>Що всередині</th></tr></thead>
     <tbody>
-      <tr><td>CH1 · Input</td><td>вкладки «Text» і «Audio»: поле з автовизначенням, приклади CQ, SOS, RU, UA; завантаження .wav, кнопка «Generate noisy test signal» і повзунок SNR</td></tr>
-      <tr><td>DSP · Settings</td><td>мова розпізнавання EN / RU / UA, швидкість 10–40 WPM, тон 400–1000 Гц, автопошук тону, табло: крапка, тире, виміряна швидкість, тон</td></tr>
-      <tr><td>CH2 · Output</td><td>перемикачі «Text» і «Audio», два поля з кнопками «Copy», лента крапок і тире, плеєр, кнопка «Download .wav»</td></tr>
+      <tr><td>CH1 · Input</td><td>вкладки «Text» і «Audio»: поле з автовизначенням, приклади CQ, SOS, <code>.... .</code>, UA, DE, PL; завантаження .wav, кнопка «Generate noisy test signal» і повзунок SNR</td></tr>
+      <tr><td>DSP · Settings</td><td>швидкість 10–40 WPM, тон 400–1000 Гц, автопошук тону, табло: крапка, тире, виміряна швидкість, тон</td></tr>
+      <tr><td>CH2 · Output</td><td>перемикачі «Text» і «Audio», мітка визначеної мови, два поля з кнопками «Copy», лента крапок і тире, плеєр, кнопка «Download .wav»</td></tr>
     </tbody>
   </table></div>
   <h3>Стан</h3>
-  <p>Усе, що сторінка пам'ятає, лежить в одному об'єкті <code>state</code>. Налаштування (мова, швидкість, тон, перемикачі) зберігаються в <code>localStorage</code>, тому переживають перезавантаження; кожне читання обгорнуте в <code>try/catch</code>, бо в приватному вікні сховище може бути недоступне.</p>
+  <p>Усе, що сторінка пам'ятає, лежить в одному об'єкті <code>state</code>. Налаштування (швидкість, тон, перемикачі) зберігаються в <code>localStorage</code>, тому переживають перезавантаження; кожне читання обгорнуте в <code>try/catch</code>, бо в приватному вікні сховище може бути недоступне.</p>
   <div class="tbl"><table>
     <thead><tr><th>Поле</th><th>Що зберігає</th></tr></thead>
     <tbody>
       <tr><td><code>tab</code></td><td>активна вкладка: <code>text</code> або <code>audio</code></td></tr>
-      <tr><td><code>lang</code>, <code>cyr</code></td><td>мова декодування і остання кирилична мова (для неоднозначного тексту)</td></tr>
       <tr><td><code>wpm</code>, <code>freq</code>, <code>autoFreq</code>, <code>snr</code></td><td>налаштування DSP і тестового сигналу</td></tr>
       <tr><td><code>outText</code>, <code>outAudio</code></td><td>які виводи ввімкнені</td></tr>
       <tr><td><code>audioIn</code></td><td>байти WAV на вході, ім'я, еталонний текст для порівняння</td></tr>
@@ -786,23 +872,19 @@ sequenceDiagram
   run();
 }</code></pre></figure>
   <h3>Автовизначення</h3>
-  <p><code>MorseDSP.detect</code> відрізняє текст від коду Морзе прямо під час набору. Мову сторінка вгадує сама: літери І, Ї, Є, Ґ перемикають на UA, Ы, Э, Ъ, Ё — на RU, латиниця — на EN. Кирилиця без цих літер лишає останню кириличну мову, яку обрав користувач.</p>
-  <figure class="code"><figcaption>docs/app.js · autoLanguage()</figcaption><pre><code>function autoLanguage(text) {
-  const count = (re) =&gt; (text.match(re) || []).length;
-  const ua = count(/[ІЇЄҐіїєґ]/g);
-  const ru = count(/[ЫЭЪЁыэъё]/g);
-  const cyr = /[\u0400-\u04FF]/.test(text);
-  const lat = /[A-Za-z]/.test(text);
-  let want = null;
-  if (ua &gt; ru) want = 'ua';
-  else if (ru &gt; 0) want = 'ru';
-  else if (cyr &amp;&amp; !lat) want = state.lang === 'en' ? state.cyr : null;
-  else if (lat &amp;&amp; !cyr) want = 'en';
-  if (want &amp;&amp; want !== state.lang) setLang(want, false);
+  <p><code>MorseDSP.detect</code> відрізняє текст від коду Морзе прямо під час набору. Мову сторінка не вгадує і не перемикає: вона передає ядру параметри без <code>lang</code>, а ядро повертає визначену мову в полях <code>lang</code> і <code>langName</code>. Сторінці лишається показати мітку біля заголовка «Text».</p>
+  <figure class="code"><figcaption>docs/app.js · opts(), showLanguage()</figcaption><pre><code>// No lang: the core detects the alphabet (MorseDSP accepts lang only as an override).
+function opts() {
+  return { wpm: state.wpm, freq: state.freq, autoFreq: state.autoFreq, rate: SAMPLE_RATE };
+}
+
+function showLanguage(name) {
+  el.langTag.textContent = name || '';
+  el.langTag.hidden = !name;
 }</code></pre></figure>
   <h3>Телефон вертикально й горизонтально</h3>
   <figure class="diagram">
-    <div class="scroll"><svg viewBox="0 0 840 290" role="img" aria-label="Три розкладки веб-консолі: на широкому екрані налаштування праворуч, у горизонтальному телефоні вхід і вивід поруч, а налаштування під ними, у вертикальному телефоні все одне під одним" class="fig fig-lay">
+    <div class="scroll"><svg viewBox="0 0 840 290" role="img" aria-label="Три розкладки веб-консолі: на широкому екрані налаштування праворуч, у горизонтальному телефоні вхід і вивід поруч, а налаштування під ними, у вертикальному телефоні вивід одразу під входом, а налаштування внизу" class="fig fig-lay">
 <rect x="20" y="20" width="300" height="190" rx="8" class="screen"/>
 <rect x="32" y="32" width="188" height="74" rx="5" class="wf wf-in"/><text x="126.0" y="73.0" text-anchor="middle" class="wf-t">Вхід</text>
 <rect x="32" y="116" width="188" height="82" rx="5" class="wf wf-out"/><text x="126.0" y="161.0" text-anchor="middle" class="wf-t">Вивід</text>
@@ -818,17 +900,17 @@ sequenceDiagram
 <text x="485" y="254" text-anchor="middle" class="cap-s">результат видно під час набору</text>
 <rect x="680" y="20" width="110" height="170" rx="12" class="screen"/>
 <rect x="690" y="32" width="90" height="58" rx="5" class="wf wf-in"/><text x="735.0" y="65.0" text-anchor="middle" class="wf-t">Вхід</text>
-<rect x="690" y="96" width="90" height="84" rx="5" class="wf wf-set"/><text x="735.0" y="142.0" text-anchor="middle" class="wf-t">DSP</text>
-<rect x="690" y="196" width="90" height="34" rx="5" class="wf wf-out" stroke-dasharray="4 3"/>
-<text x="735" y="217" text-anchor="middle" class="wf-t">Вивід</text>
+<rect x="690" y="96" width="90" height="84" rx="5" class="wf wf-out"/><text x="735.0" y="142.0" text-anchor="middle" class="wf-t">Вивід</text>
+<rect x="690" y="196" width="90" height="34" rx="5" class="wf wf-set" stroke-dasharray="4 3"/>
+<text x="735" y="217" text-anchor="middle" class="wf-t">DSP</text>
 <text x="735" y="254" text-anchor="middle" class="cap-t">вертикально</text>
-<text x="735" y="272" text-anchor="middle" class="cap-s">усе в один стовпчик</text>
+<text x="735" y="272" text-anchor="middle" class="cap-s">вивід одразу під входом</text>
 </svg></div>
     <figcaption>Та сама сторінка в трьох розкладках. Змінюється лише розміщення панелей; пунктиром позначено те, що лежить нижче першого екрана.</figcaption>
   </figure>
   <ul style="margin:0;padding-left:20px;display:grid;gap:8px;max-width:68ch">
     <li>Від 1000 px — дві колонки; панель налаштувань закріплюється збоку, але лише якщо вміщується на екрані за висотою.</li>
-    <li>600–999 px — одна колонка, а налаштування стають горизонтальною «стійкою» з трьох полів.</li>
+    <li>До 999 px — одна колонка: вивід одразу під входом, щоб результат було видно під час набору, а налаштування стають горизонтальною «стійкою» з двох полів (швидкість і тон) у самому низу.</li>
     <li>Горизонтальний телефон (висота до 500 px) — вхід і вивід поруч, щоб результат було видно під час набору.</li>
     <li><code>env(safe-area-inset-*)</code> відсуває вміст від виріза камери в горизонтальному положенні; на сенсорних екранах (<code>pointer: coarse</code>) збільшуються кнопки й повзунки, а поле вводу має 16 px, щоб iOS не збільшувала сторінку при фокусі.</li>
     <li>Ефекти наведення ввімкнені лише там, де є миша (<code>hover: hover</code>), щоб на сенсорному екрані кнопка не «залипала» підсвіченою.</li>
@@ -842,12 +924,13 @@ sequenceDiagram
   <div class="tbl"><table>
     <thead><tr><th>Сценарій</th><th>Приклад</th></tr></thead>
     <tbody>
-      <tr><td>А. Текст → Морзе</td><td><code>morse-dsp encode --lang ua "Дим"</code> → <code>-.. -.-- --</code></td></tr>
+      <tr><td>А. Текст → Морзе</td><td><code>morse-dsp encode "ПРИВІТ, ЕФІРЕ! 73"</code> → <code>.--. .-. -.-- .-- .. - --..-- / …</code></td></tr>
       <tr><td>Б. Морзе → текст</td><td><code>morse-dsp decode -.-. --.-</code> → <code>CQ</code></td></tr>
       <tr><td>В. Текст → звук</td><td><code>morse-dsp encode --snr 10 -o cq.wav "CQ CQ"</code></td></tr>
       <tr><td>Г. Звук → текст</td><td><code>python sdr.py | morse-dsp decode --in-format pcm --rate 12000</code></td></tr>
     </tbody>
   </table></div>
+  <p>Мова визначається автоматично, а <code>--lang</code> (en, ua, ru, de, fr, es, pl, sv, tr) лише примусово задає абетку. Файл, переданий через <code>-i</code>, декодується цілком (<code>DecodeSource</code>), тож мова обирається за всім записом. Stdin декодується наживо, символ за символом, бо там може бути приймач.</p>
   <h3>Коли код Морзе схожий на прапорець</h3>
   <p>Аргумент <code>-.-.</code> починається з дефіса, і стандартний пакет <code>flag</code> сприйняв би його як невідомий прапорець. Тому перед розбором CLI вилучає такі аргументи як текст. Окремий <code>--</code> лишається маркером «далі тільки текст», тож букву М (<code>--</code>) треба писати в лапках разом з іншими: <code>"-- ---"</code>.</p>
   <figure class="code"><figcaption>cmd/morse-dsp/cli.go · looksLikeMorseArg()</figcaption><pre><code>func looksLikeMorseArg(a string) bool {
@@ -902,13 +985,14 @@ sequenceDiagram
 <!-- ============================================================ 10 -->
 <section id="quality">
   <div><span class="num">10</span><h2>Тести, якість і деплой</h2></div>
-  <p>58 тестів, покриття ядра — 100 %, усього проєкту — 99,9 % (непокритим лишається тільки однорядковий <code>main</code>). Набір тестів ядра запускається ще й зкомпільованим у WebAssembly під Node.js (<code>make test-wasm</code>), що доводить: ядро справді не залежить від ОС.</p>
+  <p>76 тестів, покриття ядра — 100 %, усього проєкту — 99,9 % (непокритим лишається тільки однорядковий <code>main</code>). Набір тестів ядра запускається ще й зкомпільованим у WebAssembly під Node.js (<code>make test-wasm</code>), що доводить: ядро справді не залежить від ОС.</p>
   <div class="tbl"><table>
     <thead><tr><th>Файл</th><th>Що перевіряє</th></tr></thead>
     <tbody>
-      <tr><td><code>pkg/morse/morse_test.go</code></td><td>таблиці й кодек трьох мов, таймінг PARIS, відсутність клацань, точність SNR, WAV/PCM, наскрізні тести декодера</td></tr>
+      <tr><td><code>pkg/morse/morse_test.go</code></td><td>таблиці й кодек дев'яти мов, панграми, таймінг PARIS, відсутність клацань, точність SNR, WAV/PCM, наскрізні тести декодера</td></tr>
+      <tr><td><code>pkg/morse/language_test.go</code></td><td>реєстр профілів, однаковість кодів у всіх мовах, визначення мови з тексту і з коду Морзе, пріоритет радіоаматорських скорочень, стійкість до зіпсованого коду, потік без затримки й мова сеансу, шумний звук дев'ятьма мовами, перевірка імпортів ядра</td></tr>
       <tr><td><code>pkg/morse/edge_test.go</code></td><td>помилки й граничні випадки: несуча, згасання станції, 35 с шуму перед автопошуком, обрив потоку посеред посилки</td></tr>
-      <tr><td><code>cmd/morse-dsp/cli_test.go</code></td><td>сценарії А–Г, українська, помилки аргументів, зламані stdin і stdout, <code>--realtime</code>, автовизначення формату</td></tr>
+      <tr><td><code>cmd/morse-dsp/cli_test.go</code></td><td>сценарії А–Г, мови й автовизначення, файл і живий потік, помилки аргументів, зламані stdin і stdout, <code>--realtime</code>, автовизначення формату</td></tr>
     </tbody>
   </table></div>
   <div class="note"><span class="eyebrow">Головний тест</span><p><code>TestEndToEndNoisyStreaming</code>: текст → звук із білим шумом SNR 10 дБ на 15 і 25 WPM → потокове декодування → точний збіг тексту. Кожна з 4 фраз проходить з 3 різними зернами шуму і двічі: через <code>io.Reader</code>, що віддає PCM шматками випадкової непарної довжини (як pipe), і через канал <code>&lt;-chan float32</code>. Декодер щоразу стартує з 20 WPM, тож тест перевіряє й підлаштування швидкості.</p></div>
@@ -925,7 +1009,7 @@ sequenceDiagram
   <ul style="margin:0;padding-left:20px;display:grid;gap:8px;max-width:68ch">
     <li><b>SonarCloud</b> (<code>.github/workflows/sonar.yml</code>): на кожен push і pull request у <code>main</code> ставиться Go, запускаються тести з <code>coverage.out</code>, збираються CLI і WASM, і результат іде на аналіз. Налаштування в <code>sonar-project.properties</code>: тести й <code>wasm_exec.js</code> виключені з аналізу, міст WASM і веб-інтерфейс — з покриття. Когнітивна складність кожної функції не перевищує 15.</li>
     <li><b>GitHub Pages</b>: сайт віддається прямо з гілки <code>main</code>, папка <code>/docs</code>. Файл <code>docs/.nojekyll</code> вимикає обробку Jekyll. Workflow <code>.github/workflows/wasm.yml</code> на кожен push перезбирає <code>main.wasm</code> і падає, якщо закомічена версія застаріла. Збирання відтворюване завдяки прапорцям <code>-trimpath -buildvcs=false</code>: той самий код і та сама версія Go дають побайтово однаковий файл.</li>
-    <li><b>Makefile</b>: <code>make</code> (тести, CLI, WASM), <code>make serve</code> (локальний сервер на :8080), <code>make test-wasm</code>, <code>make bench</code> (≈1490× швидше за реальний час на одному ядрі).</li>
+    <li><b>Makefile</b>: <code>make</code> (тести, CLI, WASM), <code>make serve</code> (локальний сервер на :8080), <code>make test-wasm</code>, <code>make bench</code> (у 1000–1500 разів швидше за реальний час на одному ядрі, залежно від машини).</li>
   </ul>
 </section>
 
@@ -933,7 +1017,7 @@ sequenceDiagram
 <section id="quiz">
   <div><span class="num">11</span><h2>Перевір себе</h2></div>
   <p>Спробуйте відповісти, перш ніж розгорнути відповідь.</p>
-  <details class="q"><summary>Чому декодуванню мова потрібна завжди, а кодуванню — лише через одну літеру?</summary><div><p>Під час декодування той самий код означає різні літери: <code>..</code> — це I, И або І. Під час кодування кожна літера сама каже, з якої вона абетки. Виняток — «И»: вона є в обох кириличних абетках, але в російській це <code>..</code>, а в українській <code>-.--</code>.</p></div></details>
+  <details class="q"><summary>Чому кодуванню прапорець мови не потрібен, а декодер мусить мову вгадувати?</summary><div><p>Кожна літера сама каже, з якої вона абетки, і має той самий код у всіх мовах. Виняток — «И» (<code>..</code> у російській, <code>-.--</code> в українській), її вирішує <code>DetectLanguage</code>. А код Морзе мови не несе: <code>..</code> — це I, И або І, <code>.-.-</code> — Я, Ä або Ą. Тому декодер читає слово всіма абетками й обирає найправдоподібніше прочитання.</p></div></details>
   <details class="q"><summary>Що виведе декодер на 30 секундах чистого шуму і чому?</summary><div><p>Нічого. Шумоподавлювач вимагає, щоб тон був на 12 дБ вище медіани шуму. Сплески шуму настільки високо піднімаються дуже рідко й лише на один-два кадри, а фільтр коротких імпульсів відкидає зміни, коротші за 0,3 крапки.</p></div></details>
   <details class="q"><summary>Чому поріг стоїть посередині між шумом і сигналом у лінійній шкалі, а не в децибелах?</summary><div><p>Фільтр розмазує фронт симетрично, і рівень половини амплітуди перетинається точно в момент справжнього фронту. Середина в децибелах лежить набагато нижче половини амплітуди, тож посилки здавалися б довшими, а паузи коротшими, і на високій швидкості паузи плуталися б.</p></div></details>
   <details class="q"><summary>Що зламалося б без фази захоплення, якщо сигнал іде на 10 WPM, а декодер стартує з 20?</summary><div><p>Перша крапка (120 мс) ближча до гіпотези «тире на 30 WPM», тому декодер вирішив би, що одиниця — 40 мс. Паузи всередині літер (120 мс) тоді перевищили б 2u, і кожна крапка друкувалася б окремою літерою «T». Захоплення притримує 12 елементів і підбирає швидкість по всіх одразу.</p></div></details>
@@ -942,13 +1026,17 @@ sequenceDiagram
   <details class="q"><summary>Що станеться, якщо у браузері зняти галочку «Audio», а потім «Text»?</summary><div><p>Після першого кліку блок звуку зникне, і WAV перестане синтезуватися. Другий клік зніме «Text», але одразу ввімкне «Audio», бо хоча б один вивід завжди має працювати; кнопка «Audio» коротко спалахне.</p></div></details>
   <details class="q"><summary>Як CLI відрізняє аргумент <code>-.-.</code> від прапорця?</summary><div><p><code>looksLikeMorseArg</code> вважає текстом будь-який аргумент, що починається з дефіса і складається лише з крапок, тире й розділювачів, крім <code>-</code> і <code>--</code>. Такі аргументи вилучаються до того, як за справу береться пакет <code>flag</code>.</p></div></details>
   <details class="q"><summary>Чому <code>make wasm</code> щоразу копіює <code>wasm_exec.js</code>?</summary><div><p>Цей файл — частина середовища виконання Go, і його внутрішній інтерфейс змінюється між версіями. Якщо <code>main.wasm</code> зібрано однією версією Go, а <code>wasm_exec.js</code> узято з іншої, модуль не запуститься.</p></div></details>
-  <details class="q"><summary>Як закодується «Дим» без <code>--lang ua</code> і чому?</summary><div><p>Як <code>-.. .. --</code>, тобто з російською «И». У слові немає літер, характерних лише для української чи лише для російської, тому <code>DetectLanguage</code> обирає російську. Для української треба вказати <code>--lang ua</code>, і тоді вийде <code>-.. -.-- --</code>.</p></div></details>
+  <details class="q"><summary>Як закодується «Дим» і чому?</summary><div><p>Як <code>-.. -.-- --</code>, тобто з українською «И». У слові немає літер, характерних лише для української чи лише для російської, а статистика нічого не вирішує, тож спрацьовує правило: неоднозначна кирилиця — українська. Для російського коду треба вказати <code>--lang ru</code>, і тоді вийде <code>-.. .. --</code>.</p></div></details>
+  <details class="q"><summary>Чому в українському сеансі «CQ» спершу виводиться як «ЦЩ»?</summary><div><p>Потоковий декодер не затримує виведення: кожен символ іде одразу в активній абетці, а абетка змінюється лише на паузі між словами. Коди CQ є і в кирилиці (Ц, Щ), тож перше слово виходить кирилицею. Після нього радіоаматорське скорочення переважує, і далі все латиницею. У файлі, декодованому цілком, такого слова немає.</p></div></details>
+  <details class="q"><summary>Чому один зіпсований код <code>----</code> не перетворює англійський текст на кирилицю?</summary><div><p>Абетка, якій код невідомий, отримує штраф −6, але не вибуває повністю. Довга англійська фраза набирає набагато більше балів за частотами й парами літер, тож лишається англійською, а зіпсований код стає <code>*</code>.</p></div></details>
 </section>
 
 <!-- ============================================================ 12 -->
 <section id="gloss">
   <div><span class="num">12</span><h2>Словник</h2></div>
   <dl class="gloss">
+    <dt>Профіль мови</dt><dd>Запис <code>LanguageProfile</code>: власні літери абетки з кодами, частоти літер, характерні пари й частотні слова. З нього будуються таблиці кодека й ваги детектора мови.</dd>
+    <dt>Мова сеансу</dt><dd>Остання впевнено визначена абетка потоку. У ній починаються нові передачі й читаються короткі відповіді; забувається після 30 с тиші.</dd>
     <dt>CW</dt><dd>Continuous Wave, телеграфна робота азбукою Морзе в радіоефірі: тон, який вмикають і вимикають ключем.</dd>
     <dt>WPM</dt><dd>Слів за хвилину за еталонним словом PARIS (50 одиниць). Крапка триває 1200 / WPM мс.</dd>
     <dt>Одиниця (u)</dt><dd>Тривалість крапки. Тире — 3u, паузи — 1u, 3u і 7u.</dd>

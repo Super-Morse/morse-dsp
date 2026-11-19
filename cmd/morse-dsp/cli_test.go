@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -49,7 +50,9 @@ func TestScenarioB_MorseToText(t *testing.T) {
 		{[]string{"decode", "-.-.", "--.-"}, "", "CQ\n"},       // Morse that looks like flags
 		{[]string{"decode", "---", "--lang", "en"}, "", "O\n"}, // flags after text
 		{[]string{}, "... --- ...", "SOS\n"},                   // mode guessed from Morse
-		{[]string{"decode", "--lang", "ru", ".--. .-. .. .-- . -"}, "", "ПРИВЕТ\n"},
+		{[]string{"decode", "--lang", "ru", "-- .. .-."}, "", "МИР\n"},
+		{[]string{"decode", ".--. .-. -.-- .-- .. - / -.. .-. ..- ...- ."}, "", "ПРИВІТ ДРУЖЕ\n"}, // detected
+		{[]string{"decode", "--. .-. ..-- ...--.. . / .- ..- ..."}, "", "GRÜẞE AUS\n"},
 		{[]string{"decode", "--", "-- ---"}, "", "MO\n"},
 	}
 	for _, c := range cases {
@@ -118,38 +121,64 @@ func TestBadArguments(t *testing.T) {
 	}
 }
 
-func TestUkrainian(t *testing.T) {
-	out, _, code := cli(t, nil, "encode", "--lang", "ua", "Дим")
-	if code != 0 || out != "-.. -.-- --\n" {
-		t.Errorf("encode ua: %q", out)
+func TestLanguages(t *testing.T) {
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"encode", "Дим"}, "-.. -.-- --\n"},               // ambiguous Cyrillic: Ukrainian И
+		{[]string{"encode", "--lang", "ru", "Дим"}, "-.. .. --\n"}, // forced
+		{[]string{"encode", "Привіт"}, ".--. .-. -.-- .-- .. -\n"}, // І gives the language away
+		{[]string{"encode", "Mañana, Łódź"}, "-- .- --.-- .- -. .- --..-- / .-..- ---. -.. --..-.\n"},
+		{[]string{"decode", "--lang", "ua", "-.. -.-- --"}, "ДИМ\n"}, // a lone "--" would end the flags
+		{[]string{"decode", "-.. -.-- --"}, "DYM\n"},                 // a short burst reads as ITU
+	} {
+		if out, errOut, code := cli(t, nil, c.args...); code != 0 || out != c.want {
+			t.Errorf("%v: code %d, out %q, err %q", c.args, code, out, errOut)
+		}
 	}
-	out, _, _ = cli(t, nil, "encode", "Привіт") // І gives the language away
-	if out != ".--. .-. -.-- .-- .. -\n" {
-		t.Errorf("encode auto: %q", out)
+	if _, errOut, _ := cli(t, nil, "encode", "-v", "--lang", "ru", "Дим"); !strings.Contains(errOut, "language Russian (fixed)") {
+		t.Errorf("verbose fixed language: %q", errOut)
 	}
-	out, _, code = cli(t, nil, "decode", "--lang", "ua", "-.. -.-- --") // a lone "--" would end the flags
-	if code != 0 || out != "ДИМ\n" {
-		t.Errorf("decode ua: %q", out)
+	if _, errOut, _ := cli(t, nil, "decode", "-v", ".-.- -.-"); !strings.Contains(errOut, "language Ukrainian (detected)") {
+		t.Errorf("verbose detected language: %q", errOut)
 	}
-	wav := filepath.Join(t.TempDir(), "ua.wav")
-	if _, errOut, code := cli(t, nil, "encode", "--lang", "ua", "--snr", "10", "--seed", "3", "-o", wav, "ПЕРЕВІРКА ЗВ’ЯЗКУ 73"); code != 0 {
-		t.Fatal(errOut)
-	}
-	out, _, _ = cli(t, nil, "decode", "--lang", "ua", "-i", wav)
-	if out != "ПЕРЕВІРКА ЗВ'ЯЗКУ 73\n" {
-		t.Errorf("audio ua: %q", out)
+
+	dir := t.TempDir()
+	for i, text := range []string{"ПЕРЕВІРКА ЗВ’ЯЗКУ 73", "GRÜẞE AUS MÜNCHEN", "ЧУЄШ, ЯК ГАРНО СПІВАЄ ПТАХ?"} {
+		wav := filepath.Join(dir, strconv.Itoa(i)+".wav")
+		if _, errOut, code := cli(t, nil, "encode", "--snr", "10", "--seed", "3", "-o", wav, text); code != 0 {
+			t.Fatal(errOut)
+		}
+		want := strings.ReplaceAll(text, "’", "'") + "\n"
+		// a file is decoded as a whole: the language fits the whole recording
+		if out, errOut, _ := cli(t, nil, "decode", "-v", "-i", wav); out != want || !strings.Contains(errOut, "language") {
+			t.Errorf("file: %q (%q), want %q", out, errOut, want)
+		}
+		// stdin is decoded live; these phrases open with a word that settles the alphabet
+		if i > 0 {
+			data, _ := os.ReadFile(wav)
+			if out, _, _ := cli(t, data, "decode"); out != want {
+				t.Errorf("live: %q, want %q", out, want)
+			}
+		}
 	}
 }
 
 func TestRuntimeErrors(t *testing.T) {
 	dir := t.TempDir()
 	wav, _, _ := cli(t, nil, "encode", "--out-format", "wav", "E")
+	wavFile := filepath.Join(dir, "e.wav")
+	if err := os.WriteFile(wavFile, []byte(wav), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	cases := []struct {
 		name  string
 		stdin []byte
 		args  []string
 	}{
-		{"bad language", nil, []string{"--lang", "de", "E"}},
+		{"bad language", nil, []string{"--lang", "xx", "E"}},
+		{"file decoder rejects wpm", nil, []string{"decode", "--wpm", "500", "-i", wavFile}},
 		{"missing input file", nil, []string{"-i", filepath.Join(dir, "nope.wav")}},
 		{"bad output path", nil, []string{"-o", filepath.Join(dir, "no", "such", "dir.txt"), "E"}},
 		{"freq not a number", nil, []string{"encode", "--out-format", "wav", "--freq", "abc", "E"}},
@@ -183,6 +212,10 @@ func (brokenWriter) Write([]byte) (int, error) { return 0, errors.New("broken pi
 
 func TestOutputErrors(t *testing.T) {
 	pcm, _, _ := cli(t, nil, "encode", "--out-format", "pcm", "TEST")
+	wav := filepath.Join(t.TempDir(), "test.wav")
+	if _, errOut, code := cli(t, nil, "encode", "-o", wav, "TEST"); code != 0 {
+		t.Fatal(errOut)
+	}
 	for _, c := range []struct {
 		stdin []byte
 		args  []string
@@ -193,6 +226,7 @@ func TestOutputErrors(t *testing.T) {
 		{nil, []string{"encode", "--out-format", "pcm", "E"}},
 		{nil, []string{"encode", "--out-format", "pcm", "--realtime", "--wpm", "60", "E"}},
 		{[]byte(pcm), []string{"decode", "--in-format", "pcm"}},
+		{nil, []string{"decode", "-i", wav}},
 	} {
 		var errb bytes.Buffer
 		if code := run(c.args, bytes.NewReader(c.stdin), brokenWriter{}, &errb); code != 1 {

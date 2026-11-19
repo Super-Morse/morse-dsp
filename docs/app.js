@@ -15,20 +15,18 @@
     mDot: $('mDot'), mDash: $('mDash'), mWpm: $('mWpm'), mTone: $('mTone'),
     outText: $('outText'), outAudio: $('outAudio'), toggleHint: $('toggleHint'), notices: $('notices'),
     textBlock: $('textBlock'), audioBlock: $('audioBlock'), plainOut: $('plainOut'), morseOut: $('morseOut'), tape: $('tape'),
+    langTag: $('langTag'),
     audioLabel: $('audioLabel'), audioMeta: $('audioMeta'), audioOut: $('audioOut'), outLamp: $('outLamp'),
     downloadBtn: $('downloadBtn'),
   };
-  const langButtons = Array.from(document.querySelectorAll('[data-lang]'));
-
   const SAMPLE_RATE = 8000;
-  const DEFAULT_PHRASE = { en: 'CQ CQ DE MORSE DSP TEST K', ru: 'ПРОВЕРКА СВЯЗИ 73', ua: 'ПЕРЕВІРКА ЗВ’ЯЗКУ 73' };
-  const LANGS = ['en', 'ru', 'ua'];
+  const DEFAULT_PHRASE = 'CQ CQ DE UR5ABC TEST K';
   const STORE_KEY = 'morse-dsp:settings:v1';
 
   const state = {
     ready: false,
     tab: 'text',
-    lang: 'en', cyr: 'ru', wpm: 20, freq: 700, autoFreq: false, snr: 10,
+    wpm: 20, freq: 700, autoFreq: false, snr: 10,
     outText: true, outAudio: true,
     audioIn: null,            // { bytes, name, reference, keying }
     urls: { in: null, out: null },
@@ -41,8 +39,6 @@
     let s = {};
     try { s = JSON.parse(localStorage.getItem(STORE_KEY) || '{}') || {}; } catch { /* private mode */ }
     const num = (v, lo, hi, d) => (Number.isFinite(v) && v >= lo && v <= hi ? v : d);
-    state.lang = LANGS.includes(s.lang) ? s.lang : 'en';
-    state.cyr = s.cyr === 'ua' ? 'ua' : 'ru'; // last Cyrillic language, for text that fits both
     state.wpm = num(s.wpm, 10, 40, 20);
     state.freq = num(s.freq, 400, 1000, 700);
     state.snr = num(s.snr, -5, 30, 10);
@@ -53,8 +49,8 @@
   }
 
   function saveSettings() {
-    const { lang, cyr, wpm, freq, autoFreq, snr, outText, outAudio } = state;
-    try { localStorage.setItem(STORE_KEY, JSON.stringify({ lang, cyr, wpm, freq, autoFreq, snr, outText, outAudio })); } catch { /* ignore */ }
+    const { wpm, freq, autoFreq, snr, outText, outAudio } = state;
+    try { localStorage.setItem(STORE_KEY, JSON.stringify({ wpm, freq, autoFreq, snr, outText, outAudio })); } catch { /* ignore */ }
   }
 
   function syncControls() {
@@ -64,7 +60,6 @@
     el.autoFreqIn.checked = state.autoFreq;
     el.outText.checked = state.outText;
     el.outAudio.checked = state.outAudio;
-    langButtons.forEach((b) => b.setAttribute('aria-checked', String(b.dataset.lang === state.lang)));
     updateReadouts();
     updateBlocks();
   }
@@ -146,8 +141,9 @@
     timer = setTimeout(run, delay);
   }
 
+  // No lang: the core detects the alphabet (MorseDSP accepts lang only as an override).
   function opts() {
-    return { lang: state.lang, wpm: state.wpm, freq: state.freq, autoFreq: state.autoFreq, rate: SAMPLE_RATE };
+    return { wpm: state.wpm, freq: state.freq, autoFreq: state.autoFreq, rate: SAMPLE_RATE };
   }
 
   function run() {
@@ -225,6 +221,7 @@
     if (state.outText) {
       el.plainOut.textContent = r.text || '';
       el.morseOut.textContent = r.morse || '';
+      showLanguage(r.text ? r.langName : '');
       drawTape(r.morse || '');
     }
     if (state.outAudio) {
@@ -237,8 +234,14 @@
   function renderEmpty() {
     el.plainOut.textContent = '';
     el.morseOut.textContent = '';
+    showLanguage('');
     drawTape('');
     clearOutAudio();
+  }
+
+  function showLanguage(name) {
+    el.langTag.textContent = name || '';
+    el.langTag.hidden = !name;
   }
 
   function showDetect(kind) {
@@ -326,7 +329,7 @@
   function generateTest() {
     if (!state.ready) return;
     let phrase = el.textIn.value.trim();
-    if (window.MorseDSP.detect(phrase) === 'empty') phrase = DEFAULT_PHRASE[state.lang];
+    if (window.MorseDSP.detect(phrase) === 'empty') phrase = DEFAULT_PHRASE;
     if (phrase.length > 160) phrase = truncateAtWord(phrase, 160);
     const seed = Math.floor(Math.random() * 2 ** 31);
     const r = window.MorseDSP.generateTestSignal(phrase, { wpm: state.wpm, freq: state.freq, snr: state.snr, seed, rate: SAMPLE_RATE });
@@ -335,7 +338,7 @@
       notice('error', r.error);
       return;
     }
-    const ref = window.MorseDSP.processText(phrase, true, false, { lang: state.lang });
+    const ref = window.MorseDSP.processText(phrase, true, false, {});
     const name = `test-${state.wpm}wpm-${state.freq}hz-snr${state.snr}db.wav`;
     setAudioInput(r.wav, name, ref.ok ? ref.text : null, r.keying);
   }
@@ -469,31 +472,6 @@
     run();
   }
 
-  // ---------------------------------------------------------------- language auto-switch
-  // Plain text decides the alphabet: І Ї Є Ґ mean Ukrainian, Ы Э Ъ Ё Russian;
-  // other Cyrillic text keeps the last Cyrillic choice (Russian by default).
-  function autoLanguage(text) {
-    const count = (re) => (text.match(re) || []).length;
-    const ua = count(/[ІЇЄҐіїєґ]/g);
-    const ru = count(/[ЫЭЪЁыэъё]/g);
-    const cyr = /[\u0400-\u04FF]/.test(text);
-    const lat = /[A-Za-z]/.test(text);
-    let want = null;
-    if (ua > ru) want = 'ua';
-    else if (ru > 0) want = 'ru';
-    else if (cyr && !lat) want = state.lang === 'en' ? state.cyr : null;
-    else if (lat && !cyr) want = 'en';
-    if (want && want !== state.lang) setLang(want, false);
-  }
-
-  function setLang(lang, rerun = true) {
-    state.lang = lang;
-    if (lang !== 'en') state.cyr = lang;
-    langButtons.forEach((b) => b.setAttribute('aria-checked', String(b.dataset.lang === lang)));
-    saveSettings();
-    if (rerun) schedule(0);
-  }
-
   // ---------------------------------------------------------------- copy
   async function copyText(btn) {
     const text = $(btn.dataset.copy).textContent;
@@ -529,9 +507,7 @@
 
     el.textIn.addEventListener('input', () => {
       const v = el.textIn.value;
-      const kind = state.ready ? window.MorseDSP.detect(v) : 'empty';
-      showDetect(kind);
-      if (kind === 'text') autoLanguage(v);
+      showDetect(state.ready ? window.MorseDSP.detect(v) : 'empty');
       schedule(Math.min(600, 140 + v.length / 2)); // long texts make long WAVs
     });
     el.textIn.addEventListener('keydown', (e) => {
@@ -540,7 +516,6 @@
     el.clearBtn.addEventListener('click', () => { el.textIn.value = ''; el.textIn.focus(); run(); });
     document.querySelectorAll('[data-example]').forEach((b) => b.addEventListener('click', () => {
       el.textIn.value = b.dataset.example;
-      if (window.MorseDSP && window.MorseDSP.detect(el.textIn.value) === 'text') autoLanguage(el.textIn.value);
       setTab('text');
     }));
 
@@ -558,7 +533,6 @@
     el.genBtn.addEventListener('click', generateTest);
     el.snrIn.addEventListener('input', () => { state.snr = +el.snrIn.value; updateReadouts(); saveSettings(); });
 
-    langButtons.forEach((b) => b.addEventListener('click', () => setLang(b.dataset.lang)));
     el.wpmIn.addEventListener('input', () => { state.wpm = +el.wpmIn.value; updateReadouts(); saveSettings(); schedule(); });
     el.freqIn.addEventListener('input', () => { state.freq = +el.freqIn.value; updateReadouts(); saveSettings(); schedule(); });
     el.autoFreqIn.addEventListener('change', () => { state.autoFreq = el.autoFreqIn.checked; saveSettings(); schedule(0); });

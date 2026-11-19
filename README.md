@@ -1,6 +1,6 @@
 # 📟 Morse DSP — CW Encoder & Streaming Decoder
 
-A high-performance **Morse code (CW)** toolkit written in pure **Go (Golang)**: a text codec, a CW audio synthesizer and a **real-time DSP decoder** built on the **Goertzel algorithm**, shipped as a Unix-pipe-friendly **CLI** and as a **WebAssembly (WASM)** radio console that runs entirely in the browser. Supports **English, Russian and Ukrainian** alphabets.
+A high-performance **Morse code (CW)** toolkit written in pure **Go (Golang)**: a text codec, a CW audio synthesizer and a **real-time DSP decoder** built on the **Goertzel algorithm**, shipped as a Unix-pipe-friendly **CLI** and as a **WebAssembly (WASM)** radio console that runs entirely in the browser. **Automatic multi-language detection** covers ITU Latin, the major European alphabets with diacritics (German, French, Spanish, Polish, Nordic, Turkish), **Ukrainian** and Russian — no language flag needed.
 
 🚀 **Live Web Console:** [https://super-morse.github.io/morse-dsp](https://super-morse.github.io/morse-dsp)
 
@@ -31,7 +31,7 @@ A high-performance **Morse code (CW)** toolkit written in pure **Go (Golang)**: 
   <img src="https://img.shields.io/badge/WebAssembly-WASM-654FF0?style=flat&logo=webassembly&logoColor=white" alt="WebAssembly" />
   <img src="https://img.shields.io/badge/DSP-Goertzel-FFB547?style=flat" alt="Goertzel DSP" />
   <img src="https://img.shields.io/badge/Dependencies-stdlib%20only-success?style=flat" alt="Standard library only" />
-  <img src="https://img.shields.io/badge/Alphabets-EN%20%7C%20RU%20%7C%20UA-informational?style=flat" alt="EN RU UA" />
+  <img src="https://img.shields.io/badge/Alphabets-ITU%20%7C%20EU%20%7C%20UA%20%7C%20RU%20·%20auto--detect-informational?style=flat" alt="ITU, European, Ukrainian and Russian alphabets with automatic detection" />
 </p>
 
 👉 **Live Analytics Dashboard:** [SonarCloud Project Overview](https://sonarcloud.io/project/overview?id=Super-Morse_morse-dsp)
@@ -54,10 +54,10 @@ Morse code is older than the telephone, yet it is still on the air every day:
 | Metric | Status / Value | Description |
 |---|---|---|
 | **🎯 Coverage** | **100% core · 99.9% overall** | `pkg/morse` fully covered; the CLI is tested through `run()`, only the one-line `main()` stays outside. |
-| **🧪 Test Suite** | **58 tests, 0 failures** | Unit, end-to-end (noisy audio → text) and CLI tests; the core suite also runs compiled to WebAssembly. |
+| **🧪 Test Suite** | **76 tests, 0 failures** | Unit, language detection, end-to-end (noisy audio → text in 9 languages) and CLI tests; the core suite also runs compiled to WebAssembly. |
 | **🧹 Maintainability** | **Cognitive complexity ≤ 15** | Every function stays below Sonar's `go:S3776` threshold; `go vet` and `gofmt` clean. |
-| **🔒 Dependencies** | **Go standard library only** | No third-party modules, no cgo, no `os`/`syscall` in the core — compiles unchanged for `GOOS=js`. |
-| **⚡ Performance** | **~1,490× real time** | Decoding 8 kHz audio on one CPU core (`make bench`). |
+| **🔒 Dependencies** | **Go standard library only** | No third-party modules, no cgo, no `os`/`syscall`/`syscall/js` in the core (enforced by a test) — compiles unchanged for `GOOS=js` and is ready for a `c-shared` SDR adapter. |
+| **⚡ Performance** | **1,000–1,500× real time** | Decoding 8 kHz audio on one CPU core (`make bench`, varies with the machine); language detection adds no measurable cost. |
 
 Live ratings for security, reliability and duplication are published by SonarCloud on every push to `main` (see the badges above).
 
@@ -96,14 +96,15 @@ Live ratings for security, reliability and duplication are published by SonarClo
 
 ## ✨ Features
 
-- **Bidirectional Text Codec:** Text ⇄ Morse for Latin (ITU), Russian and Ukrainian alphabets plus digits and punctuation. Lenient parsing of `.` `·` `•` / `-` `_` `—` notations and `/`, `|` or double-space word separators.
+- **Automatic Multi-Language Detection:** a data-driven `LanguageProfile` registry (ITU English, Ukrainian, Russian, German, French, Spanish, Polish, Swedish/Nordic, Turkish). Encoding takes any supported letter without a flag; decoding picks the alphabet from the codes themselves — invalid-code penalties, unique-marker codes, letter frequencies and n-gram/word statistics — with ham abbreviations, callsigns and short bursts always reading as ITU.
+- **Bidirectional Text Codec:** Text ⇄ Morse with digits and ITU punctuation. Lenient parsing of `.` `·` `•` / `-` `_` `—` notations and `/`, `|` or double-space word separators.
 - **Clean CW Synthesis:** Continuous-phase sine keyed with **5 ms raised-cosine ramps** (no key clicks), PARIS timing, configurable WPM and tone, optional **white Gaussian noise at a given SNR** for testing.
-- **Streaming DSP Decoder:** Sliding **Goertzel** filter → envelope detector → **adaptive threshold** (median noise floor, peak tracker, squelch, hysteresis) → glitch filter → **automatic WPM tracking** → text, emitted character by character in real time.
+- **Streaming DSP Decoder:** Sliding **Goertzel** filter → envelope detector → **adaptive threshold** (median noise floor, peak tracker, squelch, hysteresis) → glitch filter → **automatic WPM tracking** → text, emitted character by character in real time — the language detector never delays the output, and a **sticky session language** keeps short replies (`ТАК`, `JA`) in the right alphabet.
 - **Automatic Tone Search:** Optional Welch/FFT spectrum scan finds the CW tone between 300 and 1500 Hz (`--freq auto`).
 - **SDR-Ready Pipe Interface:** Reads raw `s16le`/`f32le` PCM from stdin with low latency — designed for `python sdr.py | morse-dsp decode`.
 - **WAV I/O:** Reads 8/16/24/32-bit PCM and 32/64-bit float WAV (mono or stereo, any rate, even streamed WAVs); writes 16-bit PCM.
-- **In-Browser Radio Console:** The same Go code compiled to WASM. Auto-detects text vs Morse and EN/RU/UA input, decodes uploaded WAVs, generates noisy test signals in one click, and re-keys a **clean signal** from what the decoder heard.
-- **Responsive Mobile UX:** Portrait and landscape layouts, safe-area insets for notched phones, touch-sized controls, no horizontal scrolling down to 320 px.
+- **In-Browser Radio Console:** The same Go code compiled to WASM. Detects text vs Morse and the language as you type (no language selector), decodes uploaded WAVs, generates noisy test signals in one click, and re-keys a **clean signal** from what the decoder heard.
+- **Responsive Mobile UX:** In portrait the output sits right under the input and the DSP settings move to the bottom; in landscape input and output sit side by side. Safe-area insets for notched phones, touch-sized controls, no horizontal scrolling down to 320 px.
 
 ---
 
@@ -121,12 +122,12 @@ Live ratings for security, reliability and duplication are published by SonarClo
                    │
                    ▼
        ┌────────────────────────┐
-       │   pkg/morse (pure Go)  │ ◄─── Alphabets · Codec · Encoder · WAV/PCM
+       │   pkg/morse (pure Go)  │ ◄─── LanguageProfiles · Detector · Codec · Encoder · WAV/PCM
        └───────────┬────────────┘
                    │
                    ▼ (streaming samples)
        ┌────────────────────────┐
-       │   Goertzel DSP Decoder │ ◄─── Adaptive Threshold · WPM Estimator
+       │   Goertzel DSP Decoder │ ◄─── Adaptive Threshold · WPM Estimator · Language Tracker
        └───────────┬────────────┘
                    │
          ┌─────────┴──────────┐
@@ -207,24 +208,24 @@ morse-dsp --mode encode|decode [flags] [text ...]
 Input comes from text arguments, `--in`/`-i`, or stdin; output goes to `--out`/`-o` or stdout. Without a mode the tool decides: Morse text and audio are decoded, anything else is encoded.
 
 ```bash
-# A. Text → Morse
-morse-dsp encode "HELLO WORLD"                     # .... . .-.. .-.. --- / .-- --- .-. .-.. -..
-morse-dsp encode --lang ua "Дим"                   # -.. -.-- --   (Ukrainian И)
+# A. Text → Morse (any supported alphabet, no flag needed)
+morse-dsp encode "HELLO WORLD"                      # .... . .-.. .-.. --- / .-- --- .-. .-.. -..
+morse-dsp encode "ПРИВІТ, ЕФІРЕ! 73"                # .--. .-. -.-- .-- .. - --..-- / ...
+morse-dsp encode "Grüße aus München"                # --. .-. ..-- ...--.. . / ...
 
-# B. Morse → Text
-morse-dsp decode --in-format text ".... . .-.. .-.. ---"
+# B. Morse → Text (the alphabet is detected)
 morse-dsp decode -.-. --.-                          # CQ (Morse arguments are not mistaken for flags)
-morse-dsp decode --lang ru ".--. .-. .. .-- . -"    # ПРИВЕТ
+morse-dsp decode ".--. .-. -.-- .-- .. - / -.. .-. ..- ...- ."   # ПРИВІТ ДРУЖЕ
 echo "... --- ..." | morse-dsp                      # SOS, mode detected automatically
 
 # C. Text → Audio
-morse-dsp encode -o cq.wav "CQ CQ DE R1ABC K"
+morse-dsp encode -o cq.wav "CQ CQ DE UR5ABC K"
 morse-dsp encode --out-format wav --wpm 25 --freq 650 --snr 10 "TEST" > test.wav
-morse-dsp encode --out-format pcm "CQ" | aplay -f S16_LE -r 8000 -c 1
+morse-dsp encode --out-format pcm "CQ DE UR5ABC" | aplay -f S16_LE -r 8000 -c 1
 
-# D. Audio → Text (real time)
-morse-dsp decode -i cq.wav
-morse-dsp decode < cq.wav                           # WAV / PCM / text sniffed from the first bytes
+# D. Audio → Text
+morse-dsp decode -i cq.wav                          # a file is decoded as a whole
+morse-dsp decode < cq.wav                           # stdin is live; WAV / PCM / text sniffed from the first bytes
 morse-dsp encode --out-format pcm --realtime "CQ CQ TEST" | morse-dsp decode --in-format pcm
 ```
 
@@ -238,36 +239,66 @@ morse-dsp encode --out-format pcm --realtime "CQ CQ TEST" | morse-dsp decode --i
 | `--freq` | 700 | tone in Hz; for decoding also `auto` |
 | `--rate` | 8000 | sample rate of generated audio and of raw PCM input |
 | `--sample-format` | `s16le` | raw PCM format: `s16le` or `f32le` |
-| `--lang` | `en` | alphabet: `en`, `ru` or `ua` (`uk`) |
+| `--lang` | `auto` | optional override: `en`, `ua` (`uk`), `ru`, `de`, `fr`, `es`, `pl`, `sv`, `tr` |
 | `--snr` | off | add white noise at this SNR in dB |
 | `--seed` | random | noise seed for reproducible output |
 | `--amp`, `--ramp` | 0.5, 5 | tone amplitude and ramp time in ms |
 | `--squelch` | 12 | decoder threshold above the noise floor, dB |
 | `--linebreak` | 0 | newline after N seconds of silence (0 = off) |
 | `--realtime` | off | pace PCM output like a live receiver |
-| `-v` | off | diagnostics on stderr: duration, detected tone, WPM estimate |
+| `-v` | off | diagnostics on stderr: duration, detected tone, WPM estimate, language |
 
 Exit codes: `0` success, `1` processing error, `2` invalid arguments.
 
-> **Ukrainian vs Russian:** both alphabets share most codes, so decoding needs `--lang`. Encoding only needs it for **И** (`..` in Russian, `-.--` in Ukrainian); with `--lang en` the variant is detected from the text (І, Ї, Є, Ґ ⇒ Ukrainian). **Ґ** has no code of its own and is sent as Г.
+> **Files vs live input:** `-i FILE` is decoded as a whole, so the language is chosen from the entire recording. Stdin is decoded live with zero added latency: characters appear as they are received, and the detected language is remembered for the session.
+
+---
+
+## 🌍 Automatic Language Detection
+
+Each alphabet is one entry of a data-only `LanguageProfile` registry in [`pkg/morse/profiles.go`](pkg/morse/profiles.go): its own letters and codes, letters sent as another letter (variants), a letter-frequency table, three tiers of characteristic n-grams and a list of frequent words. Code tables and detector weights are derived from it at start-up, so adding a language means adding an entry.
+
+| Profile | Letters beyond ITU | Notes |
+|---|---|---|
+| 🇬🇧 **English (ITU)** | — | default; owns the ham tokens `CQ DE K PSE QTH QSL RST TNX UR 73 599 5NN …` and callsigns |
+| 🇺🇦 **Ukrainian** | И `-.--` · І `..` · Ї `.---.` · Є `..-..` | Ґ is sent as Г; default for ambiguous Cyrillic |
+| 🇷🇺 Russian | И `..` · Ы `-.--` · Э `..-..` · Ъ `--.--` | Ё is sent as Е |
+| 🇩🇪 German | Ä `.-.-` · Ö `---.` · Ü `..--` · ẞ `...--..` | ß accepted |
+| 🇫🇷 French | À `.--.-` · Ç `-.-..` · È `.-..-` · É `..-..` | Ê Ô Û Î … sent as the base letter |
+| 🇪🇸 Spanish | Á `.--.-` · É `..-..` · Ñ `--.--` · Ó `---.` · Ü `..--` | Í, Ú sent as I, U |
+| 🇵🇱 Polish | Ą Ć Ę Ł Ń Ó Ś `...-...` Ź `--..-.` Ż `--..-` | |
+| 🇸🇪 Swedish / Nordic | Å `.--.-` · Ä `.-.-` · Ö `---.` · É | Æ, Ø accepted (sent as Ä, Ö) |
+| 🇹🇷 Turkish | Ç · Ğ `--.-.` · İ `.-..-` · Ö · Ş `.--..` · Ü | Turkish casing (i → İ) |
+
+**Encoding** maps every supported letter to its code without a flag; the only letter Morse alphabets disagree on is Cyrillic **И**, resolved from marker letters (І Ї Є Ґ → Ukrainian, Ы Ъ Э Ё → Russian) and word statistics, defaulting to Ukrainian.
+
+**Decoding** reads the codes in every alphabet and scores each reading per word:
+
+1. **Invalid codes:** a heavy penalty for every code an alphabet does not have — a strong elimination, but one noise-garbled `----` cannot flip a long English transmission to Cyrillic.
+2. **Unique markers:** a bonus for codes only some alphabets have, split between them (`.---.` is only Ukrainian Ї, `...-...` only Polish Ś).
+3. **Statistics:** letter frequencies (log-likelihood), n-grams and frequent words of each reading; ham tokens and callsigns weigh heavily for ITU.
+4. **Fallback:** English unless another alphabet clearly wins — short or ambiguous bursts read as ITU. A Latin alphabet without any of its own letters reads exactly like English, so it counts as English.
+
+**Streaming** (`Process`, `DecodeReader`, `DecodeChan`) never buffers phrases: every character is emitted on its letter gap in the active alphabet. Only codes that alphabets disagree on beyond the script (Я/Ä/Ą, Ч/Ö/Ó, Ш, Ї) wait for the end of their word until the alphabet is confirmed. The last confidently detected alphabet becomes the **session language**: new transmissions start in it, and short replies stay in it. It is forgotten after 30 s of silence or on `Decoder.ResetLanguage()`. `DecodeSamples` and `DecodeSource` see the whole recording and choose from all of it.
 
 ---
 
 ## 🌐 Web Console & GitHub Pages
 
-- **Text tab:** detects plain text vs Morse and the EN/RU/UA alphabet as you type.
+- **Text tab:** detects plain text vs Morse as you type; the detected language is shown next to the output (examples: CQ, SOS, Morse, UA, DE, PL).
 - **Audio tab:** upload a `.wav`, or press **Generate noisy test signal** to synthesize the phrase at the chosen WPM, tone and SNR; the decoded result is compared with the reference.
-- **DSP settings:** language, speed (10–40 WPM), tone (400–1000 Hz), automatic tone search.
+- **DSP settings:** speed (10–40 WPM), tone (400–1000 Hz), automatic tone search. There is no language selector: the alphabet is detected.
 - **Output:** *Text* (plain text + Morse with copy buttons and a dot/dash tape) and *Audio* (player + `.wav` download; for audio input a clean signal re-keyed from the decoder's timeline). At least one output is always on — unchecking the last one switches the other on — and a disabled output is not computed in WASM at all.
 
 The site is the `docs/` folder, served by GitHub Pages straight from the `main` branch (**Settings → Pages → Deploy from a branch → `main` / `/docs`**). Because there is no build step on the Pages side, the compiled `docs/main.wasm` and its `wasm_exec.js` are committed: after changing Go code, run `make wasm` and commit both files. The build is reproducible (`-trimpath -buildvcs=false`), and the `wasm.yml` workflow rebuilds it on every push and fails if the committed binary is stale. `docs/.nojekyll` turns off Jekyll processing, `docs/assets/` holds the README screenshots, and `docs/learn.html` is the Ukrainian study guide (print it from the browser to get a PDF).
 
 ```js
 MorseDSP.detect(input)                                     // "text" | "morse" | "empty"
-MorseDSP.processText(input, needText, needAudio, opts)     // {kind, text, morse, wav, duration, keying, warnings}
-MorseDSP.processAudio(wavBytes, needText, needAudio, opts) // {text, morse, wav, wpm, freq, sampleRate, duration, keying}
+MorseDSP.processText(input, needText, needAudio, opts)     // {kind, lang, langName, text, morse, wav, duration, keying, warnings}
+MorseDSP.processAudio(wavBytes, needText, needAudio, opts) // {lang, langName, text, morse, wav, wpm, freq, sampleRate, duration, keying}
 MorseDSP.generateTestSignal(text, opts)                    // {wav, morse, duration, keying}
-// opts: {lang: "en"|"ru"|"ua", wpm, freq, rate, autoFreq, snr, seed}; errors: {ok: false, error}
+// opts: {wpm, freq, rate, autoFreq, snr, seed, lang?}; lang is an optional override ("en", "ua", "ru", "de", …),
+// detected by default; errors: {ok: false, error}
 ```
 
 ---
@@ -277,8 +308,10 @@ MorseDSP.generateTestSignal(text, opts)                    // {wav, morse, durat
 ```go
 import "github.com/Super-Morse/morse-dsp/pkg/morse"
 
-code, _ := morse.EncodeText("CQ DE R1ABC", morse.English) // "-.-. --.- / -.. . / .-. .---- .- -... -.-."
-text, _ := morse.DecodeText(code, morse.English)          // "CQ DE R1ABC"
+code, _ := morse.EncodeText("CQ DE UR5ABC", morse.Auto)  // "-.-. --.- / -.. . / ..- .-. ..... .- -... -.-."
+text, _ := morse.DecodeText(code, morse.Auto)            // "CQ DE UR5ABC"
+lang := morse.DetectMorseLanguage(".-.- -.-")            // morse.Ukrainian ("ЯК")
+for _, p := range morse.Profiles() { fmt.Println(p.Tag, p.Name) }
 
 cfg := morse.DefaultEncoderConfig()
 cfg.WPM, cfg.Noise, cfg.SNR = 25, true, 10
@@ -286,10 +319,13 @@ enc, _ := morse.NewEncoder(cfg)
 samples, _ := enc.Synthesize("CQ CQ TEST")                // []float32
 _ = morse.WriteWAV(w, samples, cfg.SampleRate)
 
-dec, _ := morse.NewDecoder(morse.DecoderConfig{SampleRate: 12000, AutoFrequency: true, Language: morse.Ukrainian})
+dec, _ := morse.NewDecoder(morse.DecoderConfig{SampleRate: 12000, AutoFrequency: true}) // Language: morse.Auto
 _ = dec.DecodeReader(os.Stdin, morse.S16LE, os.Stdout)    // streaming, text as it arrives
 // or: for s := range dec.DecodeChan(ch) { ... }          // ch <-chan float32
 // or: s := dec.Process(chunk); ...; s += dec.Flush()
+// dec.Language() is the active alphabet; dec.ResetLanguage() forgets the session language
+
+r, _ := morse.DecodeSource(wavReader, morse.DefaultDecoderConfig()) // a whole recording: r.Text, r.Language
 ```
 
 ---
@@ -309,6 +345,7 @@ samples ─▶ sliding Goertzel ─▶ envelope (dB) ─▶ adaptive threshold �
 4. **Speed tracking:** the dot length is fitted robustly to the last 32 marks (1, 3 units) and gaps (1, 3, 7 units). Every element divided by every multiple is a candidate, so the estimate cannot lock up when the speed doubles and old dashes look like new dots.
 5. **Acquisition:** the first 12 elements of every transmission are held back until the speed fit is reliable, then replayed — so the first characters decode correctly even when the real speed is half or double `--wpm`.
 6. **Real-time output:** a character is printed as soon as the following gap exceeds 2 dots, a word space after 5 dots.
+7. **Language tracking:** at every word space the language evidence is updated (see [Automatic Language Detection](#-automatic-language-detection)); the output is never delayed for it.
 
 ### 📈 Decoding Accuracy
 
@@ -333,11 +370,11 @@ make test-wasm      # the core suite compiled to WebAssembly and run in Node.js
 
 **Output Result:**
 ```text
-ok      github.com/Super-Morse/morse-dsp/cmd/morse-dsp  0.7s  coverage: 99.6% of statements
-ok      github.com/Super-Morse/morse-dsp/pkg/morse      1.4s  coverage: 100.0% of statements
+ok      github.com/Super-Morse/morse-dsp/cmd/morse-dsp  0.8s  coverage: 99.7% of statements
+ok      github.com/Super-Morse/morse-dsp/pkg/morse      3.5s  coverage: 100.0% of statements
 ```
 
-The acceptance test `TestEndToEndNoisyStreaming` synthesizes 4 phrases at **15 and 25 WPM with white noise at SNR 10 dB**, streams them through the decoder — as raw PCM in random odd-sized chunks (the SDR pipe scenario) and as a `<-chan float32` — and requires an **exact** text match for 3 noise seeds each. Further tests cover all three alphabets, speeds from 10 to 40 WPM, speed changes between transmissions, carriers, fading stations, auto-tuning after 35 s of noise, 6–48 kHz sample rates and every CLI scenario.
+The acceptance test `TestEndToEndNoisyStreaming` synthesizes 4 phrases at **15 and 25 WPM with white noise at SNR 10 dB**, streams them through the decoder — as raw PCM in random odd-sized chunks (the SDR pipe scenario) and as a `<-chan float32` — and requires an **exact** text match for 3 noise seeds each. `TestMultilingualNoisyAudio` does the same for a phrase in each of the 9 alphabets with automatic detection, streamed and as a whole; the detection tests decode a corpus of everyday and ham phrases, check that ham tokens and callsigns read as ITU, that one garbled code does not flip the script, and that the session language survives short replies and is forgotten after 30 s. Further tests cover speeds from 10 to 40 WPM, speed changes between transmissions, carriers, fading stations, auto-tuning after 35 s of noise, 6–48 kHz sample rates and every CLI scenario.
 
 ---
 
@@ -346,6 +383,8 @@ The acceptance test `TestEndToEndNoisyStreaming` synthesizes 4 phrases at **15 a
 - **Squelch 12 dB:** at 11 dB ten minutes of noise still give zero false characters, at 10 dB about 32. The default keeps a margin for impulsive band noise; `--squelch` trades it for sensitivity.
 - **Acquisition latency:** holding back the first elements costs ~1–2 s of latency at the start of each transmission, in exchange for correct first characters at unknown speeds.
 - **Speed estimator memory:** a faster-forgetting estimator follows abrupt 2× speed jumps one character sooner, but triples the error rate at −3 dB SNR — stability won.
+- **Zero-latency language detection:** streams never wait for a phrase, so the first word after a change of language is printed in the previous alphabet (`ЦЩ` for `CQ` in a Ukrainian session); from the next word on it is right. Files (`-i`, `DecodeSource`) are decided as a whole and have no such word.
+- **Soft elimination:** an alphabet that cannot spell a code is penalized, not dropped, so a single noise-merged element (`----`) cannot turn an English stream into Cyrillic.
 
 ## ⚠️ Limitations
 
@@ -353,6 +392,8 @@ The acceptance test `TestEndToEndNoisyStreaming` synthesizes 4 phrases at **15 a
 - A sudden ~10 dB jump of the noise floor may cost one spurious character while the noise estimate adapts (~0.5 s).
 - Very irregular hand keying decodes worse than machine-sent CW.
 - Punctuation follows ITU for all languages (the Russian `......` full stop is not used).
+- Ukrainian and Russian Morse differ only in И/І/Ы, Є/Э, Ї and Ъ: a short phrase without them (`ДОБРИЙ ДЕНЬ` / `ДОБРЫЙ ДЕНЬ`) is the same Morse in both and reads as Ukrainian; a one-word burst without telltale codes reads as ITU unless a session language is set.
+- Letters without a code of their own are sent as their base letter (Ґ → Г, Ê → E, Í → I); the ligature Œ is not supported.
 
 ---
 

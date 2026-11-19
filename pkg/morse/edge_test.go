@@ -40,13 +40,23 @@ type failSource struct{}
 func (failSource) ReadSamples([]float32) (int, error) { return 0, errBoom }
 
 func TestLanguageStrings(t *testing.T) {
-	for l, want := range map[Language]string{English: "en", Russian: "ru", Ukrainian: "uk", Language(9): "en"} {
+	for l, want := range map[Language]string{Auto: "auto", English: "en", Russian: "ru", Ukrainian: "uk", Turkish: "tr", Language(42): "auto"} {
 		if got := l.String(); got != want {
 			t.Errorf("%d.String() = %q, want %q", l, got, want)
 		}
 	}
-	if r, ok := Char(".-", Language(42)); !ok || r != 'A' {
-		t.Errorf("out-of-range language should fall back to English, got %q %v", r, ok)
+	for l, want := range map[Language]string{Auto: "Auto", Ukrainian: "Ukrainian", German: "German", Language(-1): "Auto"} {
+		if got := l.Name(); got != want {
+			t.Errorf("%d.Name() = %q, want %q", l, got, want)
+		}
+	}
+	for _, l := range []Language{Auto, Language(42)} {
+		if r, ok := Char(".-", l); !ok || r != 'A' {
+			t.Errorf("Char with %d should use the international alphabet, got %q %v", l, r, ok)
+		}
+		if a := Alphabet(l); a["-.--"] != 'Y' {
+			t.Errorf("Alphabet(%d) is not the international alphabet", l)
+		}
 	}
 	if _, ok := Code('€', English); ok {
 		t.Error("€ has no code")

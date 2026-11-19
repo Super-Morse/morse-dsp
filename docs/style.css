@@ -145,15 +145,15 @@ button { cursor: pointer; }
 }
 
 /* ---------- tabs ---------- */
-.tabs, .seg {
+.tabs {
   display: inline-flex; padding: 3px; gap: 3px; border-radius: var(--radius-sm);
   background: var(--inset); border: 1px solid var(--line);
 }
-.tabs button, .seg button {
+.tabs button {
   border: 0; border-radius: 6px; padding: 6px 14px; background: transparent;
   color: var(--muted); letter-spacing: 0.06em; transition: color 0.15s, background 0.15s;
 }
-.tabs button[aria-selected="true"], .seg button[aria-checked="true"] {
+.tabs button[aria-selected="true"] {
   color: var(--amber-hi); background: var(--panel-hi);
   box-shadow: inset 0 0 0 1px var(--line-hi), 0 0 12px rgba(255, 181, 71, 0.08);
 }
@@ -337,6 +337,10 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(
 .lcd-field + .lcd-field { margin-top: 12px; }
 .lcd-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
 .lcd-title { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.lang-tag {
+  margin-left: 8px; padding: 1px 8px; border-radius: 999px; font-size: 10.5px; letter-spacing: 0.08em;
+  color: var(--green); border: 1px solid rgba(76, 240, 142, 0.35); background: rgba(76, 240, 142, 0.05);
+}
 .meta { font-size: 11.5px; color: var(--faint); }
 
 .copy {
@@ -400,7 +404,7 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(
 
 /* ---------- hover only where a mouse can hover (no sticky hover on touch) ---------- */
 @media (hover: hover) {
-  .tabs button:hover, .seg button:hover { color: var(--text); }
+  .tabs button:hover { color: var(--text); }
   .icon-btn:hover { color: var(--text); border-color: var(--line-hi); }
   .chip:hover { color: var(--amber-hi); border-color: var(--amber-dim); }
   .dropzone:hover { border-color: var(--amber); background: rgba(255, 181, 71, 0.04); }
@@ -413,18 +417,17 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(
 
 /* ---------- responsive ---------- */
 
-/* Tablets and phones in landscape: one column; the settings become a
-   horizontal rack (language | speed | tone) between input and output. */
+/* Tablets and phones in portrait: one column, the output right under the
+   input; the settings become a horizontal rack (speed | tone) at the bottom. */
 @media (max-width: 999px) {
-  .grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "input" "settings" "output"; gap: 14px; }
+  .grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "input" "output" "settings"; gap: 14px; }
   .panel.panel-settings {
     display: grid;
-    grid-template-columns: minmax(0, 0.75fr) minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-areas: "head head head" "lang wpm freq" "meter meter meter" "hint hint hint";
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "head head" "wpm freq" "meter meter" "hint hint";
     column-gap: 22px;
   }
   .panel-settings > .panel-head { grid-area: head; }
-  .panel-settings > .field-lang { grid-area: lang; }
   .panel-settings > .field-wpm { grid-area: wpm; }
   .panel-settings > .field-freq { grid-area: freq; }
   .panel-settings > .meter { grid-area: meter; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 4px; }
@@ -455,7 +458,7 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(
 /* Very narrow phones (320–359 px). */
 @media (max-width: 359px) {
   .brand-sub, .examples-label { display: none; }
-  .tabs button, .seg button { padding: 6px 10px; }
+  .tabs button { padding: 6px 10px; }
   .toggle { padding: 6px 9px; }
   .panel-head h2 { letter-spacing: 0.1em; }
 }
@@ -482,7 +485,7 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(
 /* Touch screens: larger targets, and 16 px text so iOS does not zoom on focus. */
 @media (pointer: coarse) {
   textarea { font-size: 16px; }
-  .tabs button, .seg button { min-height: 38px; }
+  .tabs button { min-height: 38px; }
   .toggle { min-height: 40px; }
   .chip { padding: 6px 12px; }
   .copy { padding: 6px 12px; }

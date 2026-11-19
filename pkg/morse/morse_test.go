@@ -83,7 +83,7 @@ func (c *chunkReader) Read(p []byte) (int, error) {
 // ---- alphabet & text codec ----------------------------------------------------
 
 func TestAlphabetCodesAreUniquePerLanguage(t *testing.T) {
-	for _, lang := range []Language{English, Russian, Ukrainian} {
+	for lang := English; lang < numLanguages; lang++ {
 		seen := map[string]rune{}
 		for code, r := range Alphabet(lang) {
 			if prev, dup := seen[code]; dup {
@@ -95,10 +95,19 @@ func TestAlphabetCodesAreUniquePerLanguage(t *testing.T) {
 				t.Errorf("%v: Code(%q) = %q, %v; want %q", lang, r, c, ok, code)
 			}
 		}
-		if n := len(seen); n != 26+10+18 && n != 32+10+18 {
-			t.Errorf("%v: unexpected table size %d", lang, n)
+		p := profileOf(lang)
+		if want := len(scriptLetters(p.Script)) + 10 + 18 + len(uniqueCodes(p.Letters)); len(seen) != want {
+			t.Errorf("%v: table size %d, want %d", lang, len(seen), want)
 		}
 	}
+}
+
+func uniqueCodes(ls []Letter) map[string]bool {
+	m := map[string]bool{}
+	for _, l := range ls {
+		m[l.Code] = true
+	}
+	return m
 }
 
 func TestEncodeText(t *testing.T) {
@@ -107,19 +116,26 @@ func TestEncodeText(t *testing.T) {
 		lang Language
 		want string
 	}{
-		{"SOS", English, "... --- ..."},
+		{"SOS", Auto, "... --- ..."},
 		{"sos", English, "... --- ..."},
-		{"Hello World", English, ".... . .-.. .-.. --- / .-- --- .-. .-.. -.."},
-		{"  CQ\tDE\n\nR1ABC  ", English, "-.-. --.- / -.. . / .-. .---- .- -... -.-."},
-		{"ПРИВЕТ МИР", Russian, ".--. .-. .. .-- . - / -- .. .-."},
-		{"ПРИВЕТ МИР", English, ".--. .-. .. .-- . - / -- .. .-."}, // no UA letters: Russian И
-		{"Ёж", Russian, ". ...-"},
-		{"ПРИВІТ МИР", Ukrainian, ".--. .-. -.-- .-- .. - / -- -.-- .-."},
-		{"ПРИВІТ МИР", English, ".--. .-. -.-- .-- .. - / -- -.-- .-."}, // І detected: Ukrainian И
-		{"МИР", Ukrainian, "-- -.-- .-."},                               // only the language tells И apart
-		{"Їжак, ґанок, п’ять, ЄС", Ukrainian, ".---. ...- .- -.- --..-- / --. .- -. --- -.- --..-- / .--. .----. .-.- - -..- --..-- / ..-.. ..."},
-		{"73!", English, "--... ...-- -.-.--"},
-		{"", English, ""},
+		{"Hello World", Auto, ".... . .-.. .-.. --- / .-- --- .-. .-.. -.."},
+		{"  CQ\tDE\n\nUR5ABC  ", Auto, "-.-. --.- / -.. . / ..- .-. ..... .- -... -.-."},
+		{"ПРИВІТ МИР", Auto, ".--. .-. -.-- .-- .. - / -- -.-- .-."}, // І: Ukrainian И
+		{"ПРИВІТ МИР", English, ".--. .-. -.-- .-- .. - / -- -.-- .-."},
+		{"ЧТО ТЫ ДЕЛАЕШЬ", Auto, "---. - --- / - -.-- / -.. . .-.. .- . ---- -..-"}, // Ы: Russian
+		{"МИР ВАМ", Auto, "-- -.-- .-. / .-- .- --"},                                // ambiguous: Ukrainian
+		{"МИР ВАМ", Russian, "-- .. .-. / .-- .- --"},                               // forced
+		{"Ёж", Auto, ". ...-"},
+		{"Їжак, ґанок, п’ять, ЄС", Auto, ".---. ...- .- -.- --..-- / --. .- -. --- -.- --..-- / .--. .----. .-.- - -..- --..-- / ..-.. ..."},
+		{"Grüße aus München", Auto, "--. .-. ..-- ...--.. . / .- ..- ... / -- ..-- -. -.-. .... . -."},
+		{"ÇA VA À PARIS, ÉTÉ", Auto, "-.-.. .- / ...- .- / .--.- / .--. .- .-. .. ... --..-- / ..-.. - ..-.."},
+		{"MAÑANA", Auto, "-- .- --.-- .- -. .-"},
+		{"ŁÓDŹ, ŻÓŁW, ŚĆ", Auto, ".-..- ---. -.. --..-. --..-- / --..- ---. .-..- .-- --..-- / ...-... -.-.."},
+		{"SKÅL, SMØR, ÆBLE", Auto, "... -.- .--.- .-.. --..-- / ... -- ---. .-. --..-- / .-.- -... .-.. ."},
+		{"istanbul, şehir", Auto, ".-..- ... - .- -. -... ..- .-.. --..-- / .--.. . .... .-..- .-."}, // Turkish casing: i → İ
+		{"ĞÜÇÖ", Turkish, "--.-. ..-- -.-.. ---."},
+		{"73!", Auto, "--... ...-- -.-.--"},
+		{"", Auto, ""},
 	}
 	for _, tt := range tests {
 		got, err := EncodeText(tt.in, tt.lang)
@@ -129,25 +145,8 @@ func TestEncodeText(t *testing.T) {
 	}
 }
 
-func TestDetectLanguage(t *testing.T) {
-	tests := map[string]Language{
-		"Hello":         English,
-		"73 !":          English,
-		"Привет, эфир":  Russian,
-		"Дим":           Russian, // no telltale letters: Russian
-		"Привіт, ефіре": Ukrainian,
-		"Ґанок":         Ukrainian,
-		"їжак і ёж ы":   Russian, // 2 Ukrainian vs 2 Russian letters: a tie goes to Russian
-	}
-	for in, want := range tests {
-		if got := DetectLanguage(in); got != want {
-			t.Errorf("DetectLanguage(%q) = %v, want %v", in, got, want)
-		}
-	}
-}
-
 func TestEncodeTextUnknownCharacters(t *testing.T) {
-	got, err := EncodeText("A€B ✓ C€", English)
+	got, err := EncodeText("A€B ✓ C€", Auto)
 	if got != ".- -... / -.-." {
 		t.Errorf("got %q", got)
 	}
@@ -163,18 +162,21 @@ func TestDecodeText(t *testing.T) {
 		lang Language
 		want string
 	}{
-		{"... --- ...", English, "SOS"},
-		{".... . .-.. .-.. --- / .-- --- .-. .-.. -..", English, "HELLO WORLD"},
+		{"... --- ...", Auto, "SOS"},
+		{".... . .-.. .-.. --- / .-- --- .-. .-.. -..", Auto, "HELLO WORLD"},
 		{".... . .-.. .-.. ---   .-- --- .-. .-.. -..", English, "HELLO WORLD"}, // 3 spaces
 		{".... .|.-- ---", English, "HE WO"},
-		{"·−·· ·−", English, "LA"},                 // typographic dots and dashes
-		{"..- ._", English, "UA"},                  // underscore as dash
-		{"  / ... /  ", English, "S"},              // stray separators
-		{".--. .-. .. .-- . -", Russian, "ПРИВЕТ"}, // same codes, other alphabets
-		{".--. .-. .. .-- . -", Ukrainian, "ПРІВЕТ"},
-		{".--. .-. .. .-- . -", English, "PRIWET"}, //
-		{"-.-. --.-\n-.. .", English, "CQ DE"},     // newline separates words
-		{"", English, ""},
+		{"·−·· ·−", English, "LA"},               // typographic dots and dashes
+		{"..- ._", English, "UA"},                // underscore as dash
+		{"  / ... /  ", English, "S"},            // stray separators
+		{"-- .. .-. / -.--", Russian, "МИР Ы"},   // same codes, other alphabets
+		{"-- .. .-. / -.--", Ukrainian, "МІР И"}, //
+		{"-- .. .-. / -.--", English, "MIR Y"},   //
+		{".--. .-. -.-- .-- .. - / -.. .-. ..- ...- . / .-.- -.-", Auto, "ПРИВІТ ДРУЖЕ ЯК"},
+		{"---. - --- / - -.-- / -.. . .-.. .- . ---- -..-", Auto, "ЧТО ТЫ ДЕЛАЕШЬ"},
+		{"--. .-. ..-- ...--.. . / .- ..- ... / -- ..-- -. -.-. .... . -.", Auto, "GRÜẞE AUS MÜNCHEN"},
+		{"-.-. --.-\n-.. .", Auto, "CQ DE"}, // newline separates words
+		{"", Auto, ""},
 	}
 	for _, tt := range tests {
 		got, err := DecodeText(tt.in, tt.lang)
@@ -190,7 +192,7 @@ func TestDecodeTextErrors(t *testing.T) {
 	if got != "S*S" || !errors.As(err, &unk) || len(unk.Codes) != 1 || unk.Codes[0] != "........" {
 		t.Errorf("unknown code: got %q, %v", got, err)
 	}
-	_, err = DecodeText("... abc", English)
+	_, err = DecodeText("... abc", Auto)
 	var syn *SyntaxError
 	if !errors.As(err, &syn) || syn.Char != 'a' || syn.Offset != 4 {
 		t.Errorf("syntax: got %v", err)
@@ -208,6 +210,12 @@ func TestTextRoundTrip(t *testing.T) {
 		{"Эй, жлоб! Где туз? Прячь юных съёмщиц в шкаф.", Russian},
 		{"Чуєш їх, доцю, га? Кумедна ж ти, прощайся без ґольфів!", Ukrainian},
 		{"Жебракують філософи при ґанку церкви в Гадячі, ще й шатро їхнє п’яне знаємо.", Ukrainian},
+		{"Victor jagt zwölf Boxkämpfer quer über den großen Sylter Deich", German},
+		{"À Noël, l'élève français a mangé des crêpes très chaudes près de la fenêtre", French},
+		{"El pingüino Wenceslao hizo kilómetros bajo exhaustiva lluvia y frío, añoraba a su querido cachorro", Spanish},
+		{"Pchnąć w tę łódź jeża lub ośm skrzyń fig", Polish},
+		{"Flygande bäckasiner söka hwila på mjuka tuvor", Swedish},
+		{"Pijamalı hasta yağız şoföre çabucak güvendi", Turkish},
 	}
 	for _, tt := range tests {
 		code, err := EncodeText(tt.in, tt.lang)
@@ -221,6 +229,9 @@ func TestTextRoundTrip(t *testing.T) {
 		if want := NormalizeText(tt.in); got != want {
 			t.Errorf("round trip:\n got  %q\n want %q", got, want)
 		}
+		if auto, _ := DecodeText(code, Auto); auto != got {
+			t.Errorf("%v pangram with Auto:\n got  %q\n want %q", tt.lang, auto, got)
+		}
 		norm, err := NormalizeMorse(strings.ReplaceAll(strings.ReplaceAll(code, " / ", "   "), "-", "_"))
 		if err != nil || norm != code {
 			t.Errorf("NormalizeMorse = %q, %v; want %q", norm, err, code)
@@ -229,8 +240,17 @@ func TestTextRoundTrip(t *testing.T) {
 }
 
 func TestNormalizeText(t *testing.T) {
-	if got := NormalizeText("  ёлка   € hi\tthere "); got != "ЕЛКА HI THERE" {
-		t.Errorf("got %q", got)
+	for in, want := range map[string]string{
+		"  ёлка   € hi\tthere ": "ЕЛКА HI THERE",
+		"Ґанок":                 "ГАНОК",
+		"smør og æble":          "SMÖR OG ÄBLE",
+		"Straße, Fußball":       "STRAẞE, FUẞBALL",
+		"où êtes-vous":          "OU ETES-VOUS",
+		"ılık şehir":            "ILIK ŞEHİR",
+	} {
+		if got := NormalizeText(in); got != want {
+			t.Errorf("NormalizeText(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 
@@ -250,13 +270,17 @@ func TestIsMorse(t *testing.T) {
 }
 
 func TestParseLanguage(t *testing.T) {
-	for in, want := range map[string]Language{"en": English, "EN": English, "": English, "ru": Russian, "Russian": Russian, "ua": Ukrainian, "uk": Ukrainian, "UA": Ukrainian} {
+	for in, want := range map[string]Language{
+		"": Auto, "auto": Auto, " AUTO ": Auto, "en": English, "EN": English, "latin": English, "ru": Russian, "Russian": Russian,
+		"ua": Ukrainian, "uk": Ukrainian, "UA": Ukrainian, "de": German, "Deutsch": German, "fr": French, "es": Spanish,
+		"español": Spanish, "pl": Polish, "sv": Swedish, "nordic": Swedish, "tr": Turkish, "türkçe": Turkish,
+	} {
 		if got, err := ParseLanguage(in); err != nil || got != want {
-			t.Errorf("ParseLanguage(%q) = %v, %v", in, got, err)
+			t.Errorf("ParseLanguage(%q) = %v, %v; want %v", in, got, err, want)
 		}
 	}
-	if _, err := ParseLanguage("de"); err == nil {
-		t.Error("expected error for unknown language")
+	if _, err := ParseLanguage("xx"); err == nil || !strings.Contains(err.Error(), "auto, en, ua") {
+		t.Errorf("expected error listing the languages, got %v", err)
 	}
 }
 
@@ -592,17 +616,19 @@ func TestDecoderCyrillic(t *testing.T) {
 		lang Language
 		text string
 	}{
-		{Russian, "ПРИВЕТ МИР 73 ЩУКА ЭХО ЮЛА"},
 		{Ukrainian, "ПРИВІТ, ЕФІРЕ! 73 ЇЖАК ЄНОТ ДИМ ЗВ'ЯЗОК"},
+		{Russian, "ЭТО ПРОВЕРКА СВЯЗИ 73 ЩУКА ЭХО ЮЛА"},
 	}
 	for _, c := range cases {
 		for _, wpm := range []float64{15, 25} {
 			s := synth(t, c.text, synthOpts{wpm: wpm, noise: true, snr: 10, seed: 3, lang: c.lang})
-			cfg := DefaultDecoderConfig()
-			cfg.Language = c.lang
-			r, err := DecodeSamples(s, cfg)
-			if err != nil || r.Text != c.text {
-				t.Errorf("%v, %v WPM: got %q, %v", c.lang, wpm, r.Text, err)
+			for _, lang := range []Language{c.lang, Auto} {
+				cfg := DefaultDecoderConfig()
+				cfg.Language = lang
+				r, err := DecodeSamples(s, cfg)
+				if err != nil || r.Text != c.text || r.Language != c.lang {
+					t.Errorf("%v as %v, %v WPM: got %q (%v), %v", c.lang, lang, wpm, r.Text, r.Language, err)
+				}
 			}
 		}
 	}
@@ -773,6 +799,7 @@ func TestDecoderConfigValidation(t *testing.T) {
 		{SquelchDB: -3},
 		{LineBreak: -1},
 		{AutoFrequency: true, MinFrequency: 900, MaxFrequency: 800},
+		{Language: Language(42)},
 	}
 	for _, c := range bad {
 		if _, err := NewDecoder(c); err == nil {
