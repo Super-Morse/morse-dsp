@@ -178,17 +178,6 @@
         </div>
       </section>
     </main>
-
-    <footer class="foot">
-      <div class="foot-head">
-        <span>The same DSP decoder in your terminal (needs&nbsp;Go&nbsp;1.22+):</span>
-        <button type="button" class="copy" data-copy="cliCmd">Copy</button>
-      </div>
-      <pre class="foot-cmd"><code id="cliCmd">go install github.com/Super-Morse/morse-dsp/cmd/morse-dsp@latest
-export PATH="$PATH:$(go env GOPATH)/bin"
-morse-dsp encode --out-format pcm --realtime "CQ DE UR5ABC K" | morse-dsp decode --in-format pcm</code></pre>
-      <a href="https://github.com/Super-Morse/morse-dsp" rel="noopener">source code</a>
-    </footer>
   </div>
 
   <p class="signature"><em>Morse Code <span class="sig-code">..- ._</span></em> 📟</p>
