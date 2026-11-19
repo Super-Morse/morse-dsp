@@ -768,7 +768,7 @@ func encodeRune(r rune, lang Language) (encodeEntry, bool) {
   <div class="cards">
     <div class="card"><b>Несуча</b><p>Натискання довше за <code>max(10u, 1 с)</code> — це не Морзе, а несуча чи завада. Її рівень стає новим рівнем шуму, а недоприйнята літера відкидається.</p></div>
     <div class="card"><b>Безкінечна літера</b><p>16 посилок без паузи між літерами — це майже напевно шум. Такий «символ» друкується як <code>*</code>, щоб пам'ять не росла.</p></div>
-    <div class="card"><b>Автопошук тону</b><p>З <code>--freq auto</code> декодер накопичує спектр методом Велча (FFT з вікном Ганна, крок ≈4 Гц) і бере пік у смузі 300–1500 Гц, якщо він на 12 дБ вищий за медіану. Положення піка уточнюється параболою.</p></div>
+    <div class="card"><b>Автопошук тону</b><p>CLI і сторінка вмикають його завжди. Декодер накопичує спектр методом Велча (FFT з вікном Ганна, крок ≈4 Гц) і бере пік у смузі 300–1500 Гц, якщо він на 12 дБ вищий за медіану. Положення піка уточнюється параболою. Без піка лишається запасна частота, а число в <code>--freq</code> закріплює тон.</p></div>
   </div>
 </section>
 
@@ -833,7 +833,7 @@ func encodeRune(r rune, lang Language) (encodeEntry, bool) {
     <thead><tr><th>Блок</th><th>Що всередині</th></tr></thead>
     <tbody>
       <tr><td>CH1 · Input</td><td>вкладки «Text» і «Audio»: поле з автовизначенням, приклади CQ, SOS, <code>.... .</code>, UA, DE, PL; завантаження .wav, кнопка «Generate noisy test signal» і повзунок SNR</td></tr>
-      <tr><td>DSP · Settings</td><td>швидкість 10–40 WPM, тон 400–1000 Гц, автопошук тону, табло: крапка, тире, виміряна швидкість, тон</td></tr>
+      <tr><td>DSP · Settings</td><td>швидкість 10–40 WPM і тон 400–1000 Гц згенерованого сигналу (тон запису декодер шукає сам), табло: крапка, тире, виміряна швидкість, знайдений тон</td></tr>
       <tr><td>CH2 · Output</td><td>перемикачі «Text» і «Audio», мітка визначеної мови, два поля з кнопками «Copy», лента крапок і тире, плеєр, кнопка «Download .wav»</td></tr>
     </tbody>
   </table></div>
@@ -843,7 +843,7 @@ func encodeRune(r rune, lang Language) (encodeEntry, bool) {
     <thead><tr><th>Поле</th><th>Що зберігає</th></tr></thead>
     <tbody>
       <tr><td><code>tab</code></td><td>активна вкладка: <code>text</code> або <code>audio</code></td></tr>
-      <tr><td><code>wpm</code>, <code>freq</code>, <code>autoFreq</code>, <code>snr</code></td><td>налаштування DSP і тестового сигналу</td></tr>
+      <tr><td><code>wpm</code>, <code>freq</code>, <code>snr</code></td><td>налаштування DSP і тестового сигналу</td></tr>
       <tr><td><code>outText</code>, <code>outAudio</code></td><td>які виводи ввімкнені</td></tr>
       <tr><td><code>audioIn</code></td><td>байти WAV на вході, ім'я, еталонний текст для порівняння</td></tr>
       <tr><td><code>keyTimes</code></td><td>накопичені межі відрізків ключа для лампи</td></tr>
@@ -872,10 +872,10 @@ func encodeRune(r rune, lang Language) (encodeEntry, bool) {
   run();
 }</code></pre></figure>
   <h3>Автовизначення</h3>
-  <p><code>MorseDSP.detect</code> відрізняє текст від коду Морзе прямо під час набору. Мову сторінка не вгадує і не перемикає: вона передає ядру параметри без <code>lang</code>, а ядро повертає визначену мову в полях <code>lang</code> і <code>langName</code>. Сторінці лишається показати мітку біля заголовка «Text».</p>
-  <figure class="code"><figcaption>docs/app.js · opts(), showLanguage()</figcaption><pre><code>// No lang: the core detects the alphabet (MorseDSP accepts lang only as an override).
+  <p><code>MorseDSP.detect</code> відрізняє текст від коду Морзе прямо під час набору. Мову сторінка не вгадує і не перемикає: вона передає ядру параметри без <code>lang</code>, а ядро повертає визначену мову в полях <code>lang</code> і <code>langName</code>. Сторінці лишається показати мітку біля заголовка «Text». З тоном так само: перемикача немає, <code>processAudio</code> завжди шукає тон сам, а <code>freq</code> задає лише згенерований сигнал.</p>
+  <figure class="code"><figcaption>docs/app.js · opts(), showLanguage()</figcaption><pre><code>// No lang and no tone: the core detects the alphabet and always finds the tone itself.
 function opts() {
-  return { wpm: state.wpm, freq: state.freq, autoFreq: state.autoFreq, rate: SAMPLE_RATE };
+  return { wpm: state.wpm, freq: state.freq, rate: SAMPLE_RATE };
 }
 
 function showLanguage(name) {
@@ -930,7 +930,7 @@ function showLanguage(name) {
       <tr><td>Г. Звук → текст</td><td><code>python sdr.py | morse-dsp decode --in-format pcm --rate 12000</code></td></tr>
     </tbody>
   </table></div>
-  <p>Мова визначається автоматично, а <code>--lang</code> (en, ua, ru, de, fr, es, pl, sv, tr) лише примусово задає абетку. Файл, переданий через <code>-i</code>, декодується цілком (<code>DecodeSource</code>), тож мова обирається за всім записом. Stdin декодується наживо, символ за символом, бо там може бути приймач.</p>
+  <p>Мова визначається автоматично, а <code>--lang</code> (en, ua, ru, de, fr, es, pl, sv, tr) лише примусово задає абетку. Файл, переданий через <code>-i</code>, декодується цілком (<code>DecodeSource</code>), тож мова обирається за всім записом. Stdin декодується наживо, символ за символом, бо там може бути приймач. Тон декодер теж знаходить сам; <code>--freq</code> потрібен лише для згенерованого звуку (700 Гц за замовчуванням) або щоб закріпити тон слабшої станції поруч із сильнішою.</p>
   <h3>Коли код Морзе схожий на прапорець</h3>
   <p>Аргумент <code>-.-.</code> починається з дефіса, і стандартний пакет <code>flag</code> сприйняв би його як невідомий прапорець. Тому перед розбором CLI вилучає такі аргументи як текст. Окремий <code>--</code> лишається маркером «далі тільки текст», тож букву М (<code>--</code>) треба писати в лапках разом з іншими: <code>"-- ---"</code>.</p>
   <figure class="code"><figcaption>cmd/morse-dsp/cli.go · looksLikeMorseArg()</figcaption><pre><code>func looksLikeMorseArg(a string) bool {
@@ -985,14 +985,14 @@ function showLanguage(name) {
 <!-- ============================================================ 10 -->
 <section id="quality">
   <div><span class="num">10</span><h2>Тести, якість і деплой</h2></div>
-  <p>76 тестів, покриття ядра — 100 %, усього проєкту — 99,9 % (непокритим лишається тільки однорядковий <code>main</code>). Набір тестів ядра запускається ще й зкомпільованим у WebAssembly під Node.js (<code>make test-wasm</code>), що доводить: ядро справді не залежить від ОС.</p>
+  <p>77 тестів, покриття ядра — 100 %, усього проєкту — 99,9 % (непокритим лишається тільки однорядковий <code>main</code>). Набір тестів ядра запускається ще й зкомпільованим у WebAssembly під Node.js (<code>make test-wasm</code>), що доводить: ядро справді не залежить від ОС.</p>
   <div class="tbl"><table>
     <thead><tr><th>Файл</th><th>Що перевіряє</th></tr></thead>
     <tbody>
       <tr><td><code>pkg/morse/morse_test.go</code></td><td>таблиці й кодек дев'яти мов, панграми, таймінг PARIS, відсутність клацань, точність SNR, WAV/PCM, наскрізні тести декодера</td></tr>
       <tr><td><code>pkg/morse/language_test.go</code></td><td>реєстр профілів, однаковість кодів у всіх мовах, визначення мови з тексту і з коду Морзе, пріоритет радіоаматорських скорочень, стійкість до зіпсованого коду, потік без затримки й мова сеансу, шумний звук дев'ятьма мовами, перевірка імпортів ядра</td></tr>
       <tr><td><code>pkg/morse/edge_test.go</code></td><td>помилки й граничні випадки: несуча, згасання станції, 35 с шуму перед автопошуком, обрив потоку посеред посилки</td></tr>
-      <tr><td><code>cmd/morse-dsp/cli_test.go</code></td><td>сценарії А–Г, мови й автовизначення, файл і живий потік, помилки аргументів, зламані stdin і stdout, <code>--realtime</code>, автовизначення формату</td></tr>
+      <tr><td><code>cmd/morse-dsp/cli_test.go</code></td><td>сценарії А–Г, мови й автовизначення, пошук тону, файл і живий потік, помилки аргументів, зламані stdin і stdout, <code>--realtime</code>, автовизначення формату</td></tr>
     </tbody>
   </table></div>
   <div class="note"><span class="eyebrow">Головний тест</span><p><code>TestEndToEndNoisyStreaming</code>: текст → звук із білим шумом SNR 10 дБ на 15 і 25 WPM → потокове декодування → точний збіг тексту. Кожна з 4 фраз проходить з 3 різними зернами шуму і двічі: через <code>io.Reader</code>, що віддає PCM шматками випадкової непарної довжини (як pipe), і через канал <code>&lt;-chan float32</code>. Декодер щоразу стартує з 20 WPM, тож тест перевіряє й підлаштування швидкості.</p></div>

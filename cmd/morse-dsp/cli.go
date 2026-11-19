@@ -37,10 +37,11 @@ Scenarios:
 Languages (--lang auto, the default):
   Any supported letter is encoded without a flag: ITU Latin, German Ä Ö Ü ẞ,
   French À Ç È É, Spanish Á Ñ Ó, Polish Ą Ć Ę Ł Ń Ś Ź Ż, Nordic Å Ä Ö Æ Ø,
-  Turkish Ç Ğ İ Ş, Ukrainian and Russian Cyrillic. Decoding detects the
-  alphabet; ham abbreviations, callsigns and short bursts read as ITU. Files
-  are decoded as a whole; stdin is decoded live, character by character, and
-  short replies keep the language last detected in the session.
+  Turkish Ç Ğ İ Ş and Ukrainian Cyrillic. Decoding detects the alphabet; ham
+  abbreviations, callsigns and short bursts read as ITU. Files are decoded as
+  a whole; stdin is decoded live, character by character, and short replies
+  keep the language last detected in the session. The decoder also finds the
+  tone by itself.
 
 Flags:
 `
@@ -121,7 +122,8 @@ func newFlagSet(opt *options, stderr io.Writer) (*flag.FlagSet, *string) {
 	fs.StringVar(&opt.outPath, "out", "", "write output to `file` instead of stdout")
 	fs.StringVar(&opt.outPath, "o", "", "shorthand for --out")
 	fs.Float64Var(&opt.wpm, "wpm", morse.DefaultWPM, "speed in words per minute (decoder: initial guess, adapts automatically)")
-	fs.StringVar(&opt.freq, "freq", "700", "tone frequency in Hz; for decoding also `auto` (search 300–1500 Hz)")
+	fs.StringVar(&opt.freq, "freq", "", "tone frequency in `Hz` (default 700 for generated audio; the decoder finds the tone\n"+
+		"in 300–1500 Hz by itself, and a number pins it)")
 	fs.IntVar(&opt.rate, "rate", morse.DefaultSampleRate, "sample rate in Hz of generated audio and of raw PCM input")
 	fs.StringVar(&opt.lang, "lang", "auto", "alphabet: `auto`, en, ua, ru, de, fr, es, pl, sv or tr (a fixed one overrides detection)")
 	fs.Float64Var(&opt.snr, "snr", 0, "add white noise at this SNR in dB (encode to audio)")
@@ -381,9 +383,13 @@ func writeBuffered(out io.Writer, write func(io.Writer) error) error {
 
 // synthesize renders text (or Morse text, keyed as written) into samples.
 func synthesize(opt *options, lang morse.Language, text string, stderr io.Writer) ([]float32, error) {
-	freq, err := strconv.ParseFloat(opt.freq, 64)
-	if err != nil {
-		return nil, fmt.Errorf("--freq must be a number when generating audio, got %q", opt.freq)
+	freq := morse.DefaultFrequency
+	if opt.freq != "" {
+		f, err := strconv.ParseFloat(opt.freq, 64)
+		if err != nil {
+			return nil, fmt.Errorf("--freq must be a number when generating audio, got %q", opt.freq)
+		}
+		freq = f
 	}
 	cfg := morse.EncoderConfig{
 		SampleRate: opt.rate,
@@ -501,7 +507,7 @@ func decoderConfig(opt *options, lang morse.Language) (morse.DecoderConfig, erro
 		SquelchDB:  opt.squelch,
 		LineBreak:  opt.lineBreak,
 	}
-	if strings.EqualFold(opt.freq, "auto") {
+	if opt.freq == "" || strings.EqualFold(opt.freq, "auto") { // the default: find the tone
 		cfg.AutoFrequency = true
 		return cfg, nil
 	}

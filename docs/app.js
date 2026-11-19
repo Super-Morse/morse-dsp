@@ -11,7 +11,7 @@
     dropzone: $('dropzone'), fileIn: $('fileIn'), genBtn: $('genBtn'), snrIn: $('snrIn'), snrOut: $('snrOut'),
     audioInBox: $('audioInBox'), audioInName: $('audioInName'), audioInMeta: $('audioInMeta'),
     audioInPlayer: $('audioInPlayer'), inLamp: $('inLamp'), compareLine: $('compareLine'),
-    wpmIn: $('wpmIn'), wpmOut: $('wpmOut'), freqIn: $('freqIn'), freqOut: $('freqOut'), autoFreqIn: $('autoFreqIn'),
+    wpmIn: $('wpmIn'), wpmOut: $('wpmOut'), freqIn: $('freqIn'), freqOut: $('freqOut'),
     mDot: $('mDot'), mDash: $('mDash'), mWpm: $('mWpm'), mTone: $('mTone'),
     outText: $('outText'), outAudio: $('outAudio'), toggleHint: $('toggleHint'), notices: $('notices'),
     textBlock: $('textBlock'), audioBlock: $('audioBlock'), plainOut: $('plainOut'), morseOut: $('morseOut'), tape: $('tape'),
@@ -26,7 +26,7 @@
   const state = {
     ready: false,
     tab: 'text',
-    wpm: 20, freq: 700, autoFreq: false, snr: 10,
+    wpm: 20, freq: 700, snr: 10,
     outText: true, outAudio: true,
     audioIn: null,            // { bytes, name, reference, keying }
     urls: { in: null, out: null },
@@ -42,22 +42,20 @@
     state.wpm = num(s.wpm, 10, 40, 20);
     state.freq = num(s.freq, 400, 1000, 700);
     state.snr = num(s.snr, -5, 30, 10);
-    state.autoFreq = s.autoFreq === true;
     state.outText = s.outText !== false;
     state.outAudio = s.outAudio !== false;
     if (!state.outText && !state.outAudio) state.outText = true;
   }
 
   function saveSettings() {
-    const { wpm, freq, autoFreq, snr, outText, outAudio } = state;
-    try { localStorage.setItem(STORE_KEY, JSON.stringify({ wpm, freq, autoFreq, snr, outText, outAudio })); } catch { /* ignore */ }
+    const { wpm, freq, snr, outText, outAudio } = state;
+    try { localStorage.setItem(STORE_KEY, JSON.stringify({ wpm, freq, snr, outText, outAudio })); } catch { /* ignore */ }
   }
 
   function syncControls() {
     el.wpmIn.value = state.wpm;
     el.freqIn.value = state.freq;
     el.snrIn.value = state.snr;
-    el.autoFreqIn.checked = state.autoFreq;
     el.outText.checked = state.outText;
     el.outAudio.checked = state.outAudio;
     updateReadouts();
@@ -141,9 +139,9 @@
     timer = setTimeout(run, delay);
   }
 
-  // No lang: the core detects the alphabet (MorseDSP accepts lang only as an override).
+  // No lang and no tone: the core detects the alphabet and always finds the tone itself.
   function opts() {
-    return { wpm: state.wpm, freq: state.freq, autoFreq: state.autoFreq, rate: SAMPLE_RATE };
+    return { wpm: state.wpm, freq: state.freq, rate: SAMPLE_RATE };
   }
 
   function run() {
@@ -198,9 +196,7 @@
     el.audioInMeta.textContent = `${r.duration.toFixed(2)} s · ${(r.sampleRate / 1000).toFixed(r.sampleRate % 1000 ? 2 : 0)} kHz · DSP ${ms < 1 ? '<1' : ms.toFixed(0)} ms`;
     updateEstimate(r);
     if (!r.morse && state.outText) {
-      notice('warn', state.autoFreq
-        ? 'No tone found: the signal may be too weak, or it is not CW.'
-        : `No signal at ${state.freq} Hz. Adjust the tone or turn on "Auto-detect the tone".`);
+      notice('warn', 'No tone found: the signal may be too weak, or it is not CW.');
     }
     if (a.reference && state.outText) {
       el.compareLine.hidden = false;
@@ -535,7 +531,6 @@
 
     el.wpmIn.addEventListener('input', () => { state.wpm = +el.wpmIn.value; updateReadouts(); saveSettings(); schedule(); });
     el.freqIn.addEventListener('input', () => { state.freq = +el.freqIn.value; updateReadouts(); saveSettings(); schedule(); });
-    el.autoFreqIn.addEventListener('change', () => { state.autoFreq = el.autoFreqIn.checked; saveSettings(); schedule(0); });
 
     el.outText.addEventListener('change', () => onToggle(el.outText));
     el.outAudio.addEventListener('change', () => onToggle(el.outAudio));

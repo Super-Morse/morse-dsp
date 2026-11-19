@@ -9,10 +9,11 @@
 //
 // needText / needAudio select which outputs are produced, so no work is spent
 // on synthesizing a WAV nobody listens to (or on text nobody reads).
-// opts: {lang, wpm, freq, rate, autoFreq, snr, seed}. lang is optional: by
-// default ("auto") the alphabet is detected from the input; "en", "ua", "ru",
-// "de", "fr", "es", "pl", "sv" or "tr" forces one. Results of processText and
-// processAudio carry the alphabet used as lang (tag) and langName.
+// opts: {lang, wpm, freq, rate, snr, seed}. lang is optional: by default
+// ("auto") the alphabet is detected from the input; a language tag such as
+// "en", "ua" or "de" forces one. Results of processText and processAudio carry
+// the alphabet used as lang (tag) and langName. processAudio always finds the
+// tone itself; freq only sets generated audio (and the decoder's fallback).
 // Every call returns {ok: true, ...} or {ok: false, error}.
 //
 // Build: make wasm (GOOS=js GOARCH=wasm go build -trimpath -buildvcs=false -ldflags="-s -w" -o docs/main.wasm ./cmd/wasm)
@@ -26,7 +27,7 @@ import (
 	"github.com/Super-Morse/morse-dsp/pkg/morse"
 )
 
-const version = "1.1.0"
+const version = "1.2.0"
 
 func main() {
 	api := js.Global().Get("Object").New()
@@ -78,13 +79,12 @@ func detect(_ js.Value, args []js.Value) any {
 // options -----------------------------------------------------------------
 
 type options struct {
-	lang     morse.Language
-	wpm      float64
-	freq     float64
-	rate     int
-	autoFreq bool
-	snr      float64
-	seed     uint64
+	lang morse.Language
+	wpm  float64
+	freq float64
+	rate int
+	snr  float64
+	seed uint64
 }
 
 func parseOptions(v js.Value) (options, error) {
@@ -113,7 +113,6 @@ func parseOptions(v js.Value) (options, error) {
 	if x := v.Get("seed"); x.Type() == js.TypeNumber {
 		o.seed = uint64(x.Float())
 	}
-	o.autoFreq = v.Get("autoFreq").Truthy()
 	return o, nil
 }
 
@@ -253,11 +252,11 @@ func processAudio(args []js.Value) (result, error) {
 	cfg := morse.DefaultDecoderConfig()
 	cfg.SampleRate = rate
 	cfg.WPM = o.wpm
-	cfg.Frequency = o.freq
-	cfg.AutoFrequency = o.autoFreq
+	cfg.Frequency = o.freq // only a fallback: the tone is always searched for
+	cfg.AutoFrequency = true
 	cfg.Language = o.lang
 	if cfg.Frequency >= float64(rate)/2 {
-		return nil, errors.New("the tone frequency is above half the sample rate of the file")
+		cfg.Frequency = float64(rate) / 4
 	}
 	r, err := morse.DecodeSamples(samples, cfg)
 	if err != nil {

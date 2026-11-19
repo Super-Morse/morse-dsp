@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -89,15 +90,46 @@ func TestScenarioC_D_WAVRoundTrip(t *testing.T) {
 	}
 }
 
+// The decoder finds the tone without --freq; a number pins it.
+func TestDecodeFindsTone(t *testing.T) {
+	wav := filepath.Join(t.TempDir(), "hi.wav")
+	if _, errOut, code := cli(t, nil, "encode", "-o", wav, "--freq", "1000", "--snr", "10", "--seed", "3", "CQ DE UR5ABC K"); code != 0 {
+		t.Fatalf("encode: %s", errOut)
+	}
+	out, errOut, _ := cli(t, nil, "decode", "-i", wav, "-v")
+	if out != "CQ DE UR5ABC K\n" || math.Abs(reportedTone(errOut)-1000) > 10 {
+		t.Errorf("found tone: out %q, err %q", out, errOut)
+	}
+	out, errOut, _ = cli(t, nil, "decode", "-i", wav, "-v", "--freq", "700") // 300 Hz off: nothing to hear
+	if strings.TrimSpace(out) != "" || reportedTone(errOut) != 700 {
+		t.Errorf("pinned tone: out %q, err %q", out, errOut)
+	}
+}
+
+// reportedTone extracts the tone from the -v report ("tone 699.9 Hz"), or -1.
+func reportedTone(report string) float64 {
+	_, rest, _ := strings.Cut(report, "morse-dsp: tone ")
+	num, _, _ := strings.Cut(rest, " ")
+	f, err := strconv.ParseFloat(num, 64)
+	if err != nil {
+		return -1
+	}
+	return f
+}
+
 func TestScenarioC_D_RawPCMPipe(t *testing.T) {
-	for _, tc := range []struct{ format, rate string }{{"s16le", "12000"}, {"f32le", "8000"}} {
+	// The decoder finds the 640 Hz tone by itself; "auto" says so explicitly.
+	for _, tc := range []struct{ format, rate, freq string }{{"s16le", "12000", "auto"}, {"f32le", "8000", ""}} {
 		pcm, errOut, code := cli(t, nil, "encode", "--out-format", "pcm", "--sample-format", tc.format,
 			"--rate", tc.rate, "--freq", "640", "--snr", "10", "--seed", "1", "TEST PIPE 73")
 		if code != 0 || len(pcm) == 0 {
 			t.Fatalf("encode pcm: %s", errOut)
 		}
-		out, errOut, code := cli(t, []byte(pcm), "decode", "--in-format", "pcm", "--sample-format", tc.format,
-			"--rate", tc.rate, "--freq", "auto")
+		args := []string{"decode", "--in-format", "pcm", "--sample-format", tc.format, "--rate", tc.rate}
+		if tc.freq != "" {
+			args = append(args, "--freq", tc.freq)
+		}
+		out, errOut, code := cli(t, []byte(pcm), args...)
 		if code != 0 || out != "TEST PIPE 73\n" {
 			t.Errorf("%s: code %d, out %q, err %q", tc.format, code, out, errOut)
 		}
