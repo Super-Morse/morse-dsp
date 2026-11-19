@@ -38,7 +38,7 @@ A high-performance **Morse code (CW)** toolkit written in pure **Go (Golang)**: 
 
 ---
 
-## 🧠 Interesting Fact
+## 🧠 Interesting Facts
 
 Morse code is older than the telephone, yet it is still on the air every day:
 
