@@ -6,7 +6,7 @@
 //	morse-dsp encode --out-format wav -o cq.wav "CQ"        # C: text → WAV
 //	morse-dsp encode --out-format pcm "CQ" | aplay -f S16_LE -r 8000
 //	morse-dsp decode -i cq.wav                              # D: WAV → text
-//	python sdr.py | morse-dsp decode --in-format pcm --rate 12000
+//	morse-dsp encode --out-format pcm --realtime "CQ" | morse-dsp decode --in-format pcm  # live
 package main
 
 import "os"

@@ -32,7 +32,7 @@ Scenarios:
   C  text → audio     morse-dsp encode --out-format wav -o cq.wav "CQ CQ DE UR5ABC K"
                       morse-dsp encode --out-format pcm "CQ DE UR5ABC" | aplay -f S16_LE -r 8000
   D  audio → text     morse-dsp decode -i cq.wav
-                      python sdr.py | morse-dsp decode --in-format pcm --rate 12000
+                      morse-dsp encode --out-format pcm --realtime "CQ" | morse-dsp decode --in-format pcm
 
 Languages (--lang auto, the default):
   Any supported letter is encoded without a flag: ITU Latin, German Ä Ö Ü ẞ,

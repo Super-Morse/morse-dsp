@@ -927,7 +927,7 @@ function showLanguage(name) {
       <tr><td>А. Текст → Морзе</td><td><code>morse-dsp encode "ПРИВІТ, ЕФІРЕ! 73"</code> → <code>.--. .-. -.-- .-- .. - --..-- / …</code></td></tr>
       <tr><td>Б. Морзе → текст</td><td><code>morse-dsp decode -.-. --.-</code> → <code>CQ</code></td></tr>
       <tr><td>В. Текст → звук</td><td><code>morse-dsp encode --snr 10 -o cq.wav "CQ CQ"</code></td></tr>
-      <tr><td>Г. Звук → текст</td><td><code>python sdr.py | morse-dsp decode --in-format pcm --rate 12000</code></td></tr>
+      <tr><td>Г. Звук → текст</td><td><code>morse-dsp decode -i cq.wav</code>, а наживо: <code>morse-dsp encode --out-format pcm --realtime "CQ" | morse-dsp decode --in-format pcm</code></td></tr>
     </tbody>
   </table></div>
   <p>Мова визначається автоматично, а <code>--lang</code> (en, ua, ru, de, fr, es, pl, sv, tr) лише примусово задає абетку. Файл, переданий через <code>-i</code>, декодується цілком (<code>DecodeSource</code>), тож мова обирається за всім записом. Stdin декодується наживо, символ за символом, бо там може бути приймач. Тон декодер теж знаходить сам; <code>--freq</code> потрібен лише для згенерованого звуку (700 Гц за замовчуванням) або щоб закріпити тон слабшої станції поруч із сильнішою.</p>

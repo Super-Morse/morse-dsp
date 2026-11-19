@@ -362,14 +362,16 @@ input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(
 
 /* ---------- footer & signature ---------- */
 .foot {
-  display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
   margin-top: 22px; font-size: 12px; color: var(--faint); text-align: center;
 }
-.foot code {
-  max-width: 100%; padding: 3px 8px; border-radius: 6px; background: var(--inset); border: 1px solid var(--line);
-  color: var(--muted);
+.foot-head { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+/* The commands keep their lines; a narrow screen scrolls the block, not the page. */
+.foot-cmd {
+  max-width: 100%; margin: 0; padding: 8px 12px; overflow-x: auto; text-align: left;
+  border-radius: 6px; background: var(--inset); border: 1px solid var(--line);
+  font: 12px/1.6 var(--mono); color: var(--muted);
 }
-.foot code span { white-space: nowrap; } /* narrow screens wrap only after the pipe */
 .foot a { color: var(--muted); text-decoration-color: var(--line-hi); text-underline-offset: 3px; }
 
 .signature {

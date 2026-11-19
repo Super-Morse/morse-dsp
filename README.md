@@ -101,7 +101,7 @@ Live ratings for security, reliability and duplication are published by SonarClo
 - **Clean CW Synthesis:** Continuous-phase sine keyed with **5 ms raised-cosine ramps** (no key clicks), PARIS timing, configurable WPM and tone, optional **white Gaussian noise at a given SNR** for testing.
 - **Streaming DSP Decoder:** Sliding **Goertzel** filter → envelope detector → **adaptive threshold** (median noise floor, peak tracker, squelch, hysteresis) → glitch filter → **automatic WPM tracking** → text, emitted character by character in real time — the language detector never delays the output, and a **sticky session language** keeps short replies (`ТАК`, `JA`) in the right alphabet.
 - **Automatic Tone Search:** Always on — a Welch/FFT spectrum scan finds the CW tone between 300 and 1500 Hz; in the CLI, `--freq N` pins a known tone.
-- **SDR-Ready Pipe Interface:** Reads raw `s16le`/`f32le` PCM from stdin with low latency — designed for `python sdr.py | morse-dsp decode`.
+- **SDR-Ready Pipe Interface:** Reads raw `s16le`/`f32le` PCM from stdin with low latency — designed for an SDR receiver piping its audio straight into `morse-dsp decode`.
 - **WAV I/O:** Reads 8/16/24/32-bit PCM and 32/64-bit float WAV (mono or stereo, any rate, even streamed WAVs); writes 16-bit PCM.
 - **In-Browser Radio Console:** The same Go code compiled to WASM. Detects text vs Morse and the language as you type (no language selector), decodes uploaded WAVs, generates noisy test signals in one click, and re-keys a **clean signal** from what the decoder heard.
 - **Responsive Mobile UX:** In portrait the output sits right under the input and the DSP settings move to the bottom; in landscape input and output sit side by side. Safe-area insets for notched phones, touch-sized controls, no horizontal scrolling down to 320 px.
@@ -167,7 +167,11 @@ def emit(audio: np.ndarray) -> None:
 ```
 
 ```bash
+# sdr.py is your receiver script (or the upcoming sdr-receiver) writing samples with emit()
 python sdr.py | ./bin/morse-dsp decode --in-format pcm --rate 12000 --linebreak 2
+
+# no radio at hand: the encoder plays a live station in real time
+./bin/morse-dsp encode --out-format pcm --realtime "CQ DE UR5ABC K" | ./bin/morse-dsp decode --in-format pcm
 ```
 
 ---
@@ -203,6 +207,13 @@ The page must be served over HTTP: browsers refuse to load WebAssembly from `fil
 ```text
 morse-dsp [encode|decode] [flags] [text ...]
 morse-dsp --mode encode|decode [flags] [text ...]
+```
+
+Install the CLI alone with Go 1.22+ (or build `./bin/morse-dsp` with `make cli`):
+
+```bash
+go install github.com/Super-Morse/morse-dsp/cmd/morse-dsp@latest
+export PATH="$PATH:$(go env GOPATH)/bin"   # if Go's bin directory is not on PATH yet
 ```
 
 Input comes from text arguments, `--in`/`-i`, or stdin; output goes to `--out`/`-o` or stdout. Without a mode the tool decides: Morse text and audio are decoded, anything else is encoded.

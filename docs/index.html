@@ -180,8 +180,13 @@
     </main>
 
     <footer class="foot">
-      <span>The same DSP decoder in your terminal:</span>
-      <code><span>python sdr.py |</span> <span>morse-dsp decode --in-format pcm</span></code>
+      <div class="foot-head">
+        <span>The same DSP decoder in your terminal (needs&nbsp;Go&nbsp;1.22+):</span>
+        <button type="button" class="copy" data-copy="cliCmd">Copy</button>
+      </div>
+      <pre class="foot-cmd"><code id="cliCmd">go install github.com/Super-Morse/morse-dsp/cmd/morse-dsp@latest
+export PATH="$PATH:$(go env GOPATH)/bin"
+morse-dsp encode --out-format pcm --realtime "CQ DE UR5ABC K" | morse-dsp decode --in-format pcm</code></pre>
       <a href="https://github.com/Super-Morse/morse-dsp" rel="noopener">source code</a>
     </footer>
   </div>
